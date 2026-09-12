@@ -6,6 +6,7 @@
   <title>Sistema de Gestión e Informes de Jugadores - DT</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body {
       -webkit-tap-highlight-color: transparent;
@@ -80,12 +81,12 @@
 
       <form id="authForm" class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Nombre de Usuario</label>
+          <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Correo electrónico</label>
           <div class="relative">
             <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
               <i class="fa-solid fa-user"></i>
             </span>
-            <input type="text" id="authUsername" required placeholder="Ej. profe_martinez" 
+            <input type="email" id="authUsername" required placeholder="Ej. dt@correo.com" 
               class="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none transition text-sm text-slate-100">
           </div>
         </div>
@@ -102,6 +103,10 @@
               <i class="fa-solid fa-eye" id="eyeIcon"></i>
             </button>
           </div>
+        </div>
+
+        <div class="text-right -mt-2">
+          <button type="button" id="btnForgotPassword" class="text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition">¿Olvidaste tu contraseña?</button>
         </div>
 
         <button type="submit" id="btnAuthSubmit" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition text-sm flex items-center justify-center gap-2">
@@ -598,7 +603,17 @@
   </main>
 
   <script>
-    // Storage Keys
+    // ============================================================
+    // GestionDT + Supabase
+    // ============================================================
+    const SUPABASE_URL = 'https://rmagnucrvmemkrhwkjbb.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_pGbaNYiAr_2dU5RWAFv5Zw_hMJSyeqm';
+    const { createClient } = window.supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
+
+    // Legacy localStorage keys. They remain only for migration/backup during this transition.
     const STORAGE_USERS = 'gestion_dt_users_db_v5';
     const STORAGE_SESSION = 'gestion_dt_active_session_v5';
     const STORAGE_CLUB = 'gestion_dt_club_info_v5';
@@ -606,6 +621,7 @@
     const STORAGE_PHYSICAL = 'gestion_dt_physical_v5';
     const STORAGE_CONDUCT = 'gestion_dt_conduct_v5';
     const STORAGE_ATTENDANCE = 'gestion_dt_attendance_v5';
+    const STORAGE_MIGRATION_PREFIX = 'gestion_dt_supabase_migrated_v1_';
 
     // State Variables
     let isRegisterMode = false;
@@ -618,7 +634,7 @@
     let currentPhotoBase64 = '';
     let currentClubLogoBase64 = '';
     let searchQuery = '';
-    let attendanceEntryMode = 'individual'; // 'individual' or 'mass'
+    let attendanceEntryMode = 'individual';
 
     // DOM Elements
     const authSection = document.getElementById('authSection');
@@ -633,37 +649,30 @@
     const authAlert = document.getElementById('authAlert');
     const toggleAuthPass = document.getElementById('toggleAuthPass');
     const authPassword = document.getElementById('authPassword');
+    const btnForgotPassword = document.getElementById('btnForgotPassword');
     const eyeIcon = document.getElementById('eyeIcon');
     const navUserBadge = document.getElementById('currentUserName');
     const btnLogout = document.getElementById('btnLogout');
     const btnRefreshData = document.getElementById('btnRefreshData');
     const refreshIcon = document.getElementById('refreshIcon');
 
-    // Storage Helpers
     function getItem(key, fallback) {
       try {
         const val = localStorage.getItem(key);
         return val ? JSON.parse(val) : fallback;
-      } catch (e) {
-        return fallback;
-      }
+      } catch (e) { return fallback; }
     }
 
     function setItem(key, val) {
-      try {
-        localStorage.setItem(key, JSON.stringify(val));
-      } catch (e) {
-        if (e.name === 'QuotaExceededError') {
-          alert('Almacenamiento lleno. Reduzca la calidad o tamaño de las imágenes cargadas.');
-        }
+      try { localStorage.setItem(key, JSON.stringify(val)); }
+      catch (e) {
+        if (e.name === 'QuotaExceededError') alert('Almacenamiento lleno. Reduzca la calidad o tamaño de las imágenes cargadas.');
       }
     }
 
     function escapeHTML(str) {
       if (!str) return '';
-      return String(str).replace(/[&<>'"]/g, tag => 
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-      );
+      return String(str).replace(/[&<>'"]/g, tag => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[tag] || tag));
     }
 
     function calculateAge(dobString) {
@@ -676,28 +685,248 @@
     }
 
     function showAuthAlert(message, type = 'error') {
-      authAlert.classList.remove('hidden', 'bg-red-500/20', 'text-red-300', 'bg-emerald-500/20', 'text-emerald-300', 'border-red-500/30', 'border-emerald-500/30', 'border');
+      authAlert.classList.remove('hidden','bg-red-500/20','text-red-300','bg-emerald-500/20','text-emerald-300','border-red-500/30','border-emerald-500/30','border');
       if (type === 'error') {
-        authAlert.classList.add('bg-red-500/20', 'text-red-300', 'border', 'border-red-500/30');
-        authAlert.innerHTML = `<i class="fa-solid fa-circle-exclamation text-sm"></i> <span>${message}</span>`;
+        authAlert.classList.add('bg-red-500/20','text-red-300','border','border-red-500/30');
+        authAlert.innerHTML = `<i class="fa-solid fa-circle-exclamation text-sm"></i> <span>${escapeHTML(message)}</span>`;
       } else {
-        authAlert.classList.add('bg-emerald-500/20', 'text-emerald-300', 'border', 'border-emerald-500/30');
-        authAlert.innerHTML = `<i class="fa-solid fa-circle-check text-sm"></i> <span>${message}</span>`;
+        authAlert.classList.add('bg-emerald-500/20','text-emerald-300','border','border-emerald-500/30');
+        authAlert.innerHTML = `<i class="fa-solid fa-circle-check text-sm"></i> <span>${escapeHTML(message)}</span>`;
+      }
+    }
+
+    function supabaseErrorMessage(error) {
+      const msg = error?.message || 'Ocurrió un error inesperado.';
+      if (/email not confirmed/i.test(msg)) return 'Tu correo todavía no fue confirmado. Revisá tu bandeja de entrada.';
+      if (/invalid login credentials/i.test(msg)) return 'Correo o contraseña incorrectos.';
+      if (/password/i.test(msg) && /at least|characters|length/i.test(msg)) return 'La contraseña no cumple los requisitos de Supabase.';
+      return msg;
+    }
+
+    function localDataExists() {
+      return !!(
+        getItem(STORAGE_CLUB, null) ||
+        getItem(STORAGE_PLAYERS, []).length ||
+        getItem(STORAGE_PHYSICAL, []).length ||
+        getItem(STORAGE_CONDUCT, []).length ||
+        getItem(STORAGE_ATTENDANCE, []).length
+      );
+    }
+
+    function migrationKey(userId) { return STORAGE_MIGRATION_PREFIX + userId; }
+
+    async function migrateLegacyDataIfNeeded() {
+      if (!currentUser) return;
+      const key = migrationKey(currentUser.id);
+      if (localStorage.getItem(key) === 'done') return;
+      if (!localDataExists()) {
+        localStorage.setItem(key, 'done');
+        return;
+      }
+
+      const oldClub = getItem(STORAGE_CLUB, null);
+      const oldPlayers = getItem(STORAGE_PLAYERS, []);
+      const oldPhysical = getItem(STORAGE_PHYSICAL, []);
+      const oldConduct = getItem(STORAGE_CONDUCT, []);
+      const oldAttendance = getItem(STORAGE_ATTENDANCE, []);
+      const playerMap = {};
+
+      // Import the legacy club first.
+      if (oldClub && (oldClub.name || oldClub.category || oldClub.logo)) {
+        const { error } = await supabaseClient.from('clubs').insert({
+          user_id: currentUser.id,
+          name: oldClub.name || null,
+          category: oldClub.category || null,
+          logo: oldClub.logo || null
+        });
+        if (error) throw error;
+      }
+
+      // Import players and keep a local-id -> Supabase UUID map.
+      for (const p of oldPlayers) {
+        const { data, error } = await supabaseClient.from('players').insert({
+          user_id: currentUser.id,
+          name: p.name || 'Sin nombre',
+          dob: p.dob || null,
+          position: p.position || null,
+          foot: p.foot || null,
+          photo: p.photo || null
+        }).select().single();
+        if (error) throw error;
+        playerMap[p.id] = data.id;
+      }
+
+      for (const l of oldPhysical) {
+        const playerId = playerMap[l.playerId];
+        if (!playerId) continue;
+        const { error } = await supabaseClient.from('physical').insert({
+          user_id: currentUser.id,
+          player_id: playerId,
+          flexiones: l.pushups ?? null,
+          abdominales: l.situps ?? null,
+          velocidad_agilidad: l.speed ?? null,
+          resistencia_aerobica: l.endurance ?? null,
+          diagnostico: l.status ?? null,
+          notes: l.notes ?? null
+        });
+        if (error) throw error;
+      }
+
+      for (const l of oldConduct) {
+        const playerId = playerMap[l.playerId] || null;
+        const detail = JSON.stringify({
+          incident: l.incident || '',
+          sanction: l.sanction || '',
+          status: l.status || '',
+          date: l.date || ''
+        });
+        const { error } = await supabaseClient.from('conduct').insert({
+          user_id: currentUser.id,
+          player_id: playerId,
+          type: l.type || 'positive',
+          tutor: l.parent || null,
+          detail
+        });
+        if (error) throw error;
+      }
+
+      for (const l of oldAttendance) {
+        const playerId = playerMap[l.playerId];
+        if (!playerId) continue;
+        const { error } = await supabaseClient.from('attendance').insert({
+          user_id: currentUser.id,
+          player_id: playerId,
+          date: l.date,
+          activity: l.reason ? `${l.activity || ''} | ${l.reason}` : (l.activity || null),
+          status: l.status || 'Presente'
+        });
+        if (error) throw error;
+      }
+
+      localStorage.setItem(key, 'done');
+    }
+
+    async function saveClubToSupabase() {
+      const payload = {
+        user_id: currentUser.id,
+        name: clubInfo.name || null,
+        category: clubInfo.category || null,
+        logo: clubInfo.logo || null
+      };
+      const { data: existing, error: findError } = await supabaseClient.from('clubs').select('id').eq('user_id', currentUser.id).limit(1);
+      if (findError) throw findError;
+      if (existing?.length) {
+        const { error } = await supabaseClient.from('clubs').update(payload).eq('id', existing[0].id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabaseClient.from('clubs').insert(payload);
+        if (error) throw error;
+      }
+    }
+
+    async function savePlayerToSupabase(playerData) {
+      const payload = {
+        user_id: currentUser.id,
+        name: playerData.name,
+        dob: playerData.dob || null,
+        position: playerData.position || null,
+        foot: playerData.foot || null,
+        photo: playerData.photo || null
+      };
+      if (playerData.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(playerData.id)) {
+        const { data, error } = await supabaseClient.from('players').update(payload).eq('id', playerData.id).select().single();
+        if (error) throw error;
+        return data;
+      }
+      const { data, error } = await supabaseClient.from('players').insert(payload).select().single();
+      if (error) throw error;
+      return data;
+    }
+
+    async function deletePlayerFromSupabase(id) {
+      const { error } = await supabaseClient.from('players').delete().eq('id', id).eq('user_id', currentUser.id);
+      if (error) throw error;
+    }
+
+    async function loadAppData() {
+      if (!currentUser) return;
+      const [clubRes, playersRes, physicalRes, conductRes, attendanceRes] = await Promise.all([
+        supabaseClient.from('clubs').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true }).limit(1),
+        supabaseClient.from('players').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }),
+        supabaseClient.from('physical').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }),
+        supabaseClient.from('conduct').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }),
+        supabaseClient.from('attendance').select('*').eq('user_id', currentUser.id).order('date', { ascending: false }).order('created_at', { ascending: false })
+      ]);
+      const firstError = [clubRes, playersRes, physicalRes, conductRes, attendanceRes].find(r => r.error)?.error;
+      if (firstError) throw firstError;
+
+      const club = clubRes.data?.[0];
+      clubInfo = club ? { name: club.name || '', category: club.category || '', logo: club.logo || '' } : { name:'', category:'', logo:'' };
+      players = (playersRes.data || []).map(p => ({ id:p.id, name:p.name, dob:p.dob || '', position:p.position || '', foot:p.foot || 'Derecho', photo:p.photo || '' }));
+      const nameById = Object.fromEntries(players.map(p => [p.id, p.name]));
+
+      physicalLogs = (physicalRes.data || []).map(l => ({
+        id:l.id, playerId:l.player_id, playerName:nameById[l.player_id] || 'Desconocido',
+        date:l.created_at ? new Date(l.created_at).toLocaleDateString('es-AR') : '',
+        pushups:l.flexiones ?? 'N/R', situps:l.abdominales ?? 'N/R', speed:l.velocidad_agilidad ?? 'N/R',
+        endurance:l.resistencia_aerobica ?? 'N/R', status:l.diagnostico || 'N/R', notes:l.notes || ''
+      }));
+
+      conductLogs = (conductRes.data || []).map(l => {
+        let extra = {};
+        try { extra = l.detail ? JSON.parse(l.detail) : {}; } catch (_) { extra = { incident: l.detail || '' }; }
+        return {
+          id:l.id, playerId:l.player_id, playerName:nameById[l.player_id] || 'Desconocido', type:l.type || 'positive',
+          parent:l.tutor || '', incident:extra.incident || '', sanction:extra.sanction || (l.type === 'positive' ? 'Felicitación / Reconocimiento' : ''),
+          status:extra.status || (l.type === 'positive' ? 'Finalizada / Levantada' : 'Activa'), date:extra.date || (l.created_at ? new Date(l.created_at).toLocaleDateString('es-AR') : '')
+        };
+      });
+
+      attendanceLogs = (attendanceRes.data || []).map(l => {
+        let activity = l.activity || '';
+        let reason = '';
+        if (activity.includes(' | ')) [activity, reason] = activity.split(' | ', 2);
+        return { id:l.id, playerId:l.player_id, playerName:nameById[l.player_id] || 'Desconocido', date:l.date, activity, status:l.status, reason };
+      });
+
+      renderClubInfo();
+      renderPlayers();
+      populatePlayerDropdowns();
+      renderPhysicalLogs();
+      renderConductLogs();
+      renderAttendanceLogs();
+      renderAttendanceGrid();
+      renderMassAttendanceForm();
+    }
+
+    async function initUserSession(user) {
+      currentUser = user;
+      navUserBadge.textContent = user.email || 'Usuario';
+      authSection.classList.add('hidden');
+      appHeader.classList.remove('hidden');
+      dashboardSection.classList.remove('hidden');
+      document.getElementById('attDate').valueAsDate = new Date();
+      try {
+        await migrateLegacyDataIfNeeded();
+        await loadAppData();
+      } catch (error) {
+        console.error(error);
+        showAuthAlert('No se pudieron cargar los datos: ' + supabaseErrorMessage(error));
+        authSection.classList.remove('hidden');
+        appHeader.classList.add('hidden');
+        dashboardSection.classList.add('hidden');
       }
     }
 
     toggleAuthPass.addEventListener('click', () => {
       const type = authPassword.getAttribute('type') === 'password' ? 'text' : 'password';
       authPassword.setAttribute('type', type);
-      eyeIcon.classList.toggle('fa-eye');
-      eyeIcon.classList.toggle('fa-eye-slash');
+      eyeIcon.classList.toggle('fa-eye'); eyeIcon.classList.toggle('fa-eye-slash');
     });
 
     btnToggleAuthMode.addEventListener('click', () => {
       isRegisterMode = !isRegisterMode;
-      authAlert.classList.add('hidden');
-      authForm.reset();
-
+      authAlert.classList.add('hidden'); authForm.reset();
       if (isRegisterMode) {
         authTitle.textContent = 'Crear Cuenta';
         authSubtitle.textContent = 'Registrate para administrar tu equipo';
@@ -713,915 +942,236 @@
       }
     });
 
-    authForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const userVal = document.getElementById('authUsername').value.trim();
-      const passVal = authPassword.value.trim();
-
-      if (!userVal || !passVal) {
-        showAuthAlert('Por favor completá todos los campos.');
+    btnForgotPassword.addEventListener('click', async () => {
+      const emailInput = document.getElementById('authUsername');
+      const email = emailInput.value.trim();
+      if (!email) {
+        showAuthAlert('Primero ingresá tu correo electrónico y después tocá “¿Olvidaste tu contraseña?”.');
+        emailInput.focus();
         return;
       }
-
-      const users = getItem(STORAGE_USERS, {});
-
-      if (isRegisterMode) {
-        if (users[userVal]) {
-          showAuthAlert('El nombre de usuario ya existe. Elegí otro.');
-          return;
-        }
-        users[userVal] = passVal;
-        setItem(STORAGE_USERS, users);
-        showAuthAlert('¡Cuenta creada con éxito! Iniciando sesión...', 'success');
-        setTimeout(() => {
-          localStorage.setItem(STORAGE_SESSION, userVal);
-          initUserSession(userVal);
-        }, 800);
-      } else {
-        if (users[userVal] && users[userVal] === passVal) {
-          localStorage.setItem(STORAGE_SESSION, userVal);
-          initUserSession(userVal);
-        } else {
-          showAuthAlert('Usuario o contraseña incorrectos.');
-        }
+      btnForgotPassword.disabled = true;
+      try {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + window.location.pathname
+        });
+        if (error) throw error;
+        showAuthAlert('Te enviamos un correo para restablecer tu contraseña. Revisá también Spam o Correo no deseado.', 'success');
+      } catch (error) {
+        console.error(error);
+        showAuthAlert(supabaseErrorMessage(error));
+      } finally {
+        btnForgotPassword.disabled = false;
       }
     });
 
-    btnLogout.addEventListener('click', () => {
-      localStorage.removeItem(STORAGE_SESSION);
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('authUsername').value.trim();
+      const password = authPassword.value;
+      if (!email || !password) { showAuthAlert('Por favor completá todos los campos.'); return; }
+      btnAuthSubmit.disabled = true;
+      try {
+        if (isRegisterMode) {
+          const { data, error } = await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin + window.location.pathname } });
+          if (error) throw error;
+          if (data.session) {
+            showAuthAlert('¡Cuenta creada con éxito! Iniciando sesión...', 'success');
+            await initUserSession(data.user);
+          } else {
+            showAuthAlert('Cuenta creada. Revisá tu correo para confirmar la cuenta antes de iniciar sesión.', 'success');
+          }
+        } else {
+          const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          await initUserSession(data.user);
+        }
+      } catch (error) {
+        console.error(error);
+        showAuthAlert(supabaseErrorMessage(error));
+      } finally { btnAuthSubmit.disabled = false; }
+    });
+
+    btnLogout.addEventListener('click', async () => {
+      await supabaseClient.auth.signOut();
       currentUser = null;
-      appHeader.classList.add('hidden');
-      dashboardSection.classList.add('hidden');
-      authSection.classList.remove('hidden');
-      authForm.reset();
-      authAlert.classList.add('hidden');
+      appHeader.classList.add('hidden'); dashboardSection.classList.add('hidden'); authSection.classList.remove('hidden');
+      authForm.reset(); authAlert.classList.add('hidden');
     });
 
-    // Refresh & Instant Sync Button Action
-    btnRefreshData.addEventListener('click', () => {
+    btnRefreshData.addEventListener('click', async () => {
       refreshIcon.classList.add('spin-animation');
-      loadAppData();
-      setTimeout(() => {
-        refreshIcon.classList.remove('spin-animation');
-      }, 600);
+      try { await loadAppData(); } catch (e) { alert('No se pudieron sincronizar los datos: ' + supabaseErrorMessage(e)); }
+      setTimeout(() => refreshIcon.classList.remove('spin-animation'), 600);
     });
-
-    function initUserSession(username) {
-      currentUser = username;
-      navUserBadge.textContent = username;
-      authSection.classList.add('hidden');
-      appHeader.classList.remove('hidden');
-      dashboardSection.classList.remove('hidden');
-      
-      document.getElementById('attDate').valueAsDate = new Date();
-      loadAppData();
-    }
-
-    function loadAppData() {
-      clubInfo = getItem(STORAGE_CLUB, { name: '', category: '', logo: '' });
-      players = getItem(STORAGE_PLAYERS, []);
-      physicalLogs = getItem(STORAGE_PHYSICAL, []);
-      conductLogs = getItem(STORAGE_CONDUCT, []);
-      attendanceLogs = getItem(STORAGE_ATTENDANCE, []);
-
-      // Trigger multi-view reactive sync
-      renderClubInfo();
-      renderPlayers();
-      populatePlayerDropdowns();
-      renderPhysicalLogs();
-      renderConductLogs();
-      renderAttendanceLogs();
-      renderAttendanceGrid();
-      renderMassAttendanceForm();
-    }
 
     function switchToTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.remove('active', 'bg-emerald-600', 'text-white');
-        b.classList.add('bg-slate-800', 'text-slate-400');
-        if (b.dataset.tab === tabId) {
-          b.classList.add('active', 'bg-emerald-600', 'text-white');
-          b.classList.remove('bg-slate-800', 'text-slate-400');
-        }
+        b.classList.remove('active','bg-emerald-600','text-white'); b.classList.add('bg-slate-800','text-slate-400');
+        if (b.dataset.tab === tabId) { b.classList.add('active','bg-emerald-600','text-white'); b.classList.remove('bg-slate-800','text-slate-400'); }
       });
       document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
-      const target = document.getElementById(tabId);
-      if (target) target.classList.remove('hidden');
+      document.getElementById(tabId)?.classList.remove('hidden');
     }
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchToTab(btn.dataset.tab)));
 
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        switchToTab(btn.dataset.tab);
-      });
-    });
-
-    // Club Logo Image Upload Handler
     const clubLogoInput = document.getElementById('clubLogoInput');
     const clubLogoPreview = document.getElementById('clubLogoPreview');
     const clubLogoPlaceholderIcon = document.getElementById('clubLogoPlaceholderIcon');
     const btnRemoveClubLogo = document.getElementById('btnRemoveClubLogo');
-
-    clubLogoInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-          compressAndSetImage(evt.target.result, 250, (compressedBase64) => {
-            currentClubLogoBase64 = compressedBase64;
-            setClubLogoPreview(compressedBase64);
-          });
-        };
-        reader.readAsDataURL(file);
+    clubLogoInput.addEventListener('change', e => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        alert('Seleccioná una imagen válida para el escudo.');
+        clubLogoInput.value = '';
+        return;
       }
-    });
-
-    btnRemoveClubLogo.addEventListener('click', () => {
-      currentClubLogoBase64 = '';
-      clubLogoInput.value = '';
-      setClubLogoPreview('');
-    });
-
-    function setClubLogoPreview(src) {
-      if (src) {
-        clubLogoPreview.src = src;
-        clubLogoPreview.classList.remove('hidden');
-        clubLogoPlaceholderIcon.classList.add('hidden');
-        btnRemoveClubLogo.classList.remove('hidden');
-      } else {
-        clubLogoPreview.src = '';
-        clubLogoPreview.classList.add('hidden');
-        clubLogoPlaceholderIcon.classList.remove('hidden');
-        btnRemoveClubLogo.classList.add('hidden');
-      }
-    }
-
-    // Player Photo Upload Handler
-    const playerPhotoInput = document.getElementById('playerPhotoInput');
-    const photoPreview = document.getElementById('photoPreview');
-    const photoPlaceholderIcon = document.getElementById('photoPlaceholderIcon');
-    const btnRemovePhoto = document.getElementById('btnRemovePhoto');
-
-    playerPhotoInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-          compressAndSetImage(evt.target.result, 250, (compressedBase64) => {
-            currentPhotoBase64 = compressedBase64;
-            setPhotoPreview(compressedBase64);
-          });
-        };
-        reader.readAsDataURL(file);
-      }
-    });
-
-    btnRemovePhoto.addEventListener('click', () => {
-      currentPhotoBase64 = '';
-      playerPhotoInput.value = '';
-      setPhotoPreview('');
-    });
-
-    function setPhotoPreview(src) {
-      if (src) {
-        photoPreview.src = src;
-        photoPreview.classList.remove('hidden');
-        photoPlaceholderIcon.classList.add('hidden');
-        btnRemovePhoto.classList.remove('hidden');
-      } else {
-        photoPreview.src = '';
-        photoPreview.classList.add('hidden');
-        photoPlaceholderIcon.classList.remove('hidden');
-        btnRemovePhoto.classList.add('hidden');
-      }
-    }
-
-    function compressAndSetImage(base64Str, maxDim, callback) {
-      const img = new Image();
-      img.onload = function() {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxDim) {
-            height *= maxDim / width;
-            width = maxDim;
-          }
-        } else {
-          if (height > maxDim) {
-            width *= maxDim / height;
-            height = maxDim;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        callback(canvas.toDataURL('image/jpeg', 0.85));
+      const reader = new FileReader();
+      reader.onload = evt => {
+        compressAndSetImage(evt.target.result, 250, b64 => {
+          currentClubLogoBase64 = b64;
+          setClubLogoPreview(b64);
+        });
       };
+      reader.onerror = () => alert('No se pudo leer la imagen seleccionada.');
+      reader.readAsDataURL(file);
+    });
+    btnRemoveClubLogo.addEventListener('click',()=>{currentClubLogoBase64='';clubLogoInput.value='';setClubLogoPreview('');});
+    function setClubLogoPreview(src){
+      if(src){clubLogoPreview.src=src;clubLogoPreview.classList.remove('hidden');clubLogoPlaceholderIcon.classList.add('hidden');btnRemoveClubLogo.classList.remove('hidden');}
+      else{clubLogoPreview.src='';clubLogoPreview.classList.add('hidden');clubLogoPlaceholderIcon.classList.remove('hidden');btnRemoveClubLogo.classList.add('hidden');}
+    }
+
+    const playerPhotoInput=document.getElementById('playerPhotoInput');
+    const photoPreview=document.getElementById('photoPreview');
+    const photoPlaceholderIcon=document.getElementById('photoPlaceholderIcon');
+    const btnRemovePhoto=document.getElementById('btnRemovePhoto');
+    playerPhotoInput.addEventListener('change',e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=evt=>compressAndSetImage(evt.target.result,250,b64=>{currentPhotoBase64=b64;setPhotoPreview(b64);});reader.readAsDataURL(file);});
+    btnRemovePhoto.addEventListener('click',()=>{currentPhotoBase64='';playerPhotoInput.value='';setPhotoPreview('');});
+    function setPhotoPreview(src){if(src){photoPreview.src=src;photoPreview.classList.remove('hidden');photoPlaceholderIcon.classList.add('hidden');btnRemovePhoto.classList.remove('hidden');}else{photoPreview.src='';photoPreview.classList.add('hidden');photoPlaceholderIcon.classList.remove('hidden');btnRemovePhoto.classList.add('hidden');}}
+    function compressAndSetImage(base64Str,maxDim,callback){
+      const img = new Image();
+      img.onload = function(){
+        const canvas = document.createElement('canvas');
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
+        if (!width || !height) { alert('No se pudo procesar la imagen.'); return; }
+        if(width > height){
+          if(width > maxDim){ height *= maxDim / width; width = maxDim; }
+        } else {
+          if(height > maxDim){ width *= maxDim / height; height = maxDim; }
+        }
+        canvas.width = Math.round(width);
+        canvas.height = Math.round(height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { alert('No se pudo preparar la imagen.'); return; }
+        ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        callback(canvas.toDataURL('image/jpeg',0.85));
+      };
+      img.onerror = function(){ alert('El navegador no pudo leer esa imagen. Probá con JPG o PNG.'); };
       img.src = base64Str;
     }
 
-    // Search Filter Logic
-    const playerSearchInput = document.getElementById('playerSearchInput');
-    const btnClearSearch = document.getElementById('btnClearSearch');
+    const playerSearchInput=document.getElementById('playerSearchInput'); const btnClearSearch=document.getElementById('btnClearSearch');
+    playerSearchInput.addEventListener('input',e=>{searchQuery=e.target.value.toLowerCase().trim();btnClearSearch.classList.toggle('hidden',searchQuery.length===0);renderPlayers();});
+    btnClearSearch.addEventListener('click',()=>{playerSearchInput.value='';searchQuery='';btnClearSearch.classList.add('hidden');renderPlayers();});
 
-    playerSearchInput.addEventListener('input', (e) => {
-      searchQuery = e.target.value.toLowerCase().trim();
-      btnClearSearch.classList.toggle('hidden', searchQuery.length === 0);
-      renderPlayers();
-    });
-
-    btnClearSearch.addEventListener('click', () => {
-      playerSearchInput.value = '';
-      searchQuery = '';
-      btnClearSearch.classList.add('hidden');
-      renderPlayers();
-    });
-
-    document.getElementById('formClub').addEventListener('submit', (e) => {
+    document.getElementById('formClub').addEventListener('submit', async e=>{
       e.preventDefault();
-      clubInfo = {
-        name: document.getElementById('clubName').value.trim(),
-        category: document.getElementById('clubCategory').value.trim(),
-        logo: currentClubLogoBase64
-      };
-      setItem(STORAGE_CLUB, clubInfo);
-      renderClubInfo();
-      renderPlayers();
-      renderAttendanceGrid();
+      clubInfo={name:document.getElementById('clubName').value.trim(),category:document.getElementById('clubCategory').value.trim(),logo:currentClubLogoBase64};
+      try{await saveClubToSupabase();renderClubInfo();renderPlayers();renderAttendanceGrid();showAuthAlert('Datos del club guardados.','success');}catch(err){alert('No se pudo guardar el club: '+supabaseErrorMessage(err));}
     });
 
-    function renderClubInfo() {
-      document.getElementById('clubName').value = clubInfo.name || '';
-      document.getElementById('clubCategory').value = clubInfo.category || '';
-      currentClubLogoBase64 = clubInfo.logo || '';
-      setClubLogoPreview(currentClubLogoBase64);
-
-      // Header display update
-      document.getElementById('clubDisplayTitle').textContent = clubInfo.name || 'GestionDT';
-      document.getElementById('clubDisplaySubtitle').textContent = clubInfo.name ? `${clubInfo.name} (${clubInfo.category || 'N/A'})` : 'Sin Club Definido';
-
-      const headerLogo = document.getElementById('headerClubLogo');
-      const headerPlaceholder = document.getElementById('headerClubPlaceholder');
-
-      if (clubInfo.logo) {
-        headerLogo.src = clubInfo.logo;
-        headerLogo.classList.remove('hidden');
-        headerPlaceholder.classList.add('hidden');
-      } else {
-        headerLogo.src = '';
-        headerLogo.classList.add('hidden');
-        headerPlaceholder.classList.remove('hidden');
-      }
-
-      // Summary Card display update
-      document.getElementById('infoClubName').textContent = clubInfo.name || 'No registrado';
-      document.getElementById('infoClubCategory').textContent = clubInfo.category ? `Categoría: ${clubInfo.category}` : 'Categoría: N/A';
-
-      const infoLogo = document.getElementById('infoClubLogo');
-      const infoPlaceholder = document.getElementById('infoClubPlaceholder');
-
-      if (clubInfo.logo) {
-        infoLogo.src = clubInfo.logo;
-        infoLogo.classList.remove('hidden');
-        infoPlaceholder.classList.add('hidden');
-      } else {
-        infoLogo.src = '';
-        infoLogo.classList.add('hidden');
-        infoPlaceholder.classList.remove('hidden');
-      }
+    function renderClubInfo(){
+      document.getElementById('clubName').value=clubInfo.name||'';document.getElementById('clubCategory').value=clubInfo.category||'';currentClubLogoBase64=clubInfo.logo||'';setClubLogoPreview(currentClubLogoBase64);
+      document.getElementById('clubDisplayTitle').textContent=clubInfo.name||'GestionDT';document.getElementById('clubDisplaySubtitle').textContent=clubInfo.name?`${clubInfo.name} (${clubInfo.category||'N/A'})`:'Sin Club Definido';
+      const headerLogo=document.getElementById('headerClubLogo'),headerPlaceholder=document.getElementById('headerClubPlaceholder');
+      if(clubInfo.logo){headerLogo.src=clubInfo.logo;headerLogo.classList.remove('hidden');headerPlaceholder.classList.add('hidden');}else{headerLogo.src='';headerLogo.classList.add('hidden');headerPlaceholder.classList.remove('hidden');}
+      document.getElementById('infoClubName').textContent=clubInfo.name||'No registrado';document.getElementById('infoClubCategory').textContent=clubInfo.category?`Categoría: ${clubInfo.category}`:'Categoría: N/A';
+      const infoLogo=document.getElementById('infoClubLogo'),infoPlaceholder=document.getElementById('infoClubPlaceholder');
+      if(clubInfo.logo){infoLogo.src=clubInfo.logo;infoLogo.classList.remove('hidden');infoPlaceholder.classList.add('hidden');}else{infoLogo.src='';infoLogo.classList.add('hidden');infoPlaceholder.classList.remove('hidden');}
     }
 
-    const formPlayer = document.getElementById('formPlayer');
-    const playerFormTitle = document.getElementById('playerFormTitle');
-    const btnCancelEditPlayer = document.getElementById('btnCancelEditPlayer');
-
-    formPlayer.addEventListener('submit', (e) => {
+    const formPlayer=document.getElementById('formPlayer'),playerFormTitle=document.getElementById('playerFormTitle'),btnCancelEditPlayer=document.getElementById('btnCancelEditPlayer');
+    formPlayer.addEventListener('submit',async e=>{
       e.preventDefault();
-      const pId = document.getElementById('playerId').value;
-      const playerData = {
-        id: pId || 'p_' + Date.now(),
-        name: document.getElementById('playerName').value.trim(),
-        dob: document.getElementById('playerDob').value,
-        position: document.getElementById('playerPosition').value,
-        foot: document.getElementById('playerFoot').value,
-        photo: currentPhotoBase64
-      };
-
-      if (pId) {
-        players = players.map(p => p.id === pId ? playerData : p);
-      } else {
-        players.unshift(playerData);
-      }
-
-      setItem(STORAGE_PLAYERS, players);
-      resetPlayerForm();
-      
-      // Instant synchronization across all tabs
-      renderPlayers();
-      populatePlayerDropdowns();
-      renderAttendanceGrid();
-      renderMassAttendanceForm();
+      const oldId=document.getElementById('playerId').value;
+      const playerData={id:oldId,name:document.getElementById('playerName').value.trim(),dob:document.getElementById('playerDob').value,position:document.getElementById('playerPosition').value,foot:document.getElementById('playerFoot').value,photo:currentPhotoBase64};
+      try{const saved=await savePlayerToSupabase(playerData);if(oldId){players=players.map(p=>p.id===oldId?{...playerData,id:saved.id}:p);}else{players.unshift({...playerData,id:saved.id});}resetPlayerForm();renderPlayers();populatePlayerDropdowns();renderAttendanceGrid();renderMassAttendanceForm();}catch(err){alert('No se pudo guardar el jugador: '+supabaseErrorMessage(err));}
     });
+    function resetPlayerForm(){formPlayer.reset();document.getElementById('playerId').value='';currentPhotoBase64='';setPhotoPreview('');playerFormTitle.textContent='Cargar Jugador';document.getElementById('btnSavePlayer').querySelector('span').textContent='Guardar Jugador';btnCancelEditPlayer.classList.add('hidden');}
+    btnCancelEditPlayer.addEventListener('click',resetPlayerForm);
 
-    function resetPlayerForm() {
-      formPlayer.reset();
-      document.getElementById('playerId').value = '';
-      currentPhotoBase64 = '';
-      setPhotoPreview('');
-      playerFormTitle.textContent = 'Cargar Jugador';
-      document.getElementById('btnSavePlayer').querySelector('span').textContent = 'Guardar Jugador';
-      btnCancelEditPlayer.classList.add('hidden');
+    function renderPlayers(){
+      const container=document.getElementById('playersList'),countBadge=document.getElementById('playerCountBadge');container.innerHTML='';
+      const filteredPlayers=players.filter(p=>{const nameMatch=(p.name||'').toLowerCase().includes(searchQuery),posMatch=(p.position||'').toLowerCase().includes(searchQuery),catMatch=(clubInfo.category||'').toLowerCase().includes(searchQuery);return nameMatch||posMatch||catMatch;});
+      countBadge.textContent=`${filteredPlayers.length} / ${players.length} jugadores`;
+      if(filteredPlayers.length===0){container.innerHTML=`<div class="bg-slate-800/60 p-6 rounded-2xl text-center text-xs text-slate-400 border border-slate-700/60 flex flex-col items-center gap-2"><i class="fa-solid fa-users-slash text-2xl text-slate-500"></i><span>${searchQuery?'No se encontraron jugadores.':'No hay jugadores registrados.'}</span></div>`;return;}
+      filteredPlayers.forEach(p=>{const card=document.createElement('div');card.className="bg-slate-800 p-3.5 rounded-2xl border border-slate-700/60 shadow-md flex flex-col space-y-3 transition hover:border-slate-600";const photoSrc=p.photo||'',ageStr=calculateAge(p.dob),dobFormatted=p.dob?new Date(p.dob+'T00:00:00').toLocaleDateString('es-AR'):'N/A';card.innerHTML=`<div class="flex items-start space-x-3"><div class="w-12 h-12 rounded-full bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden flex-shrink-0 shadow">${photoSrc?`<img src="${photoSrc}" class="w-full h-full object-cover">`:`<i class="fa-solid fa-user text-slate-500 text-lg"></i>`}</div><div class="flex-1 min-w-0"><div class="flex items-center justify-between"><h5 class="font-bold text-slate-100 text-sm truncate">${escapeHTML(p.name)}</h5><div class="flex items-center space-x-1"><button onclick="editPlayer('${p.id}')" class="p-1.5 text-emerald-400 hover:bg-slate-700/60 rounded-lg transition" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button><button onclick="deletePlayer('${p.id}')" class="p-1.5 text-red-400 hover:bg-slate-700/60 rounded-lg transition" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button></div></div><p class="text-xs text-emerald-400 font-semibold">${escapeHTML(p.position)}</p><div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-400 mt-0.5"><span>🎂 ${dobFormatted} (${ageStr})</span><span>•</span><span>🦶 Pie: ${escapeHTML(p.foot||'Derecho')}</span><span>•</span><span class="text-emerald-300 font-mono">Cat: ${escapeHTML(clubInfo.category||'N/A')}</span></div></div></div><div class="pt-2 border-t border-slate-700/50 grid grid-cols-3 gap-1.5 text-[10px]"><button onclick="quickAction('physical','${p.id}')" class="bg-slate-900/80 hover:bg-emerald-950 text-emerald-300 border border-emerald-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium"><i class="fa-solid fa-dumbbell"></i> Físico</button><button onclick="quickAction('conduct','${p.id}')" class="bg-slate-900/80 hover:bg-amber-950 text-amber-300 border border-amber-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium"><i class="fa-solid fa-gavel"></i> Conducta</button><button onclick="quickAction('attendance','${p.id}')" class="bg-slate-900/80 hover:bg-blue-950 text-blue-300 border border-blue-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium"><i class="fa-solid fa-calendar-check"></i> Asistencia</button></div>`;container.appendChild(card);});
     }
 
-    btnCancelEditPlayer.addEventListener('click', resetPlayerForm);
+    window.editPlayer=function(id){const p=players.find(x=>x.id===id);if(!p)return;document.getElementById('playerId').value=p.id;document.getElementById('playerName').value=p.name;document.getElementById('playerDob').value=p.dob||'';document.getElementById('playerPosition').value=p.position;document.getElementById('playerFoot').value=p.foot||'Derecho';currentPhotoBase64=p.photo||'';setPhotoPreview(currentPhotoBase64);playerFormTitle.textContent='Editar Jugador';document.getElementById('btnSavePlayer').querySelector('span').textContent='Actualizar Jugador';btnCancelEditPlayer.classList.remove('hidden');document.getElementById('formPlayer').scrollIntoView({behavior:'smooth'});};
+    window.deletePlayer=async function(id){if(!confirm('¿Estás seguro de eliminar este jugador?'))return;try{await deletePlayerFromSupabase(id);players=players.filter(p=>p.id!==id);physicalLogs=physicalLogs.filter(l=>l.playerId!==id);conductLogs=conductLogs.filter(l=>l.playerId!==id);attendanceLogs=attendanceLogs.filter(l=>l.playerId!==id);renderPlayers();populatePlayerDropdowns();renderAttendanceGrid();renderMassAttendanceForm();}catch(err){alert('No se pudo eliminar el jugador: '+supabaseErrorMessage(err));}};
+    window.quickAction=function(module,playerId){if(module==='physical'){switchToTab('tabPhysical');document.getElementById('physPlayerId').value=playerId;}else if(module==='conduct'){switchToTab('tabConduct');document.getElementById('condPlayerId').value=playerId;}else if(module==='attendance'){switchToTab('tabAttendance');setAttendanceEntryMode('individual');document.getElementById('attPlayerId').value=playerId;}window.scrollTo({top:0,behavior:'smooth'});};
 
-    function renderPlayers() {
-      const container = document.getElementById('playersList');
-      const countBadge = document.getElementById('playerCountBadge');
-      container.innerHTML = '';
+    function populatePlayerDropdowns(){['physPlayerId','condPlayerId','attPlayerId'].forEach(ddId=>{const select=document.getElementById(ddId);select.innerHTML=players.length===0?'<option value="">Sin jugadores creados</option>':'';players.forEach(p=>{select.innerHTML+=`<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.position)})</option>`;});});}
 
-      const filteredPlayers = players.filter(p => {
-        const nameMatch = p.name.toLowerCase().includes(searchQuery);
-        const posMatch = p.position.toLowerCase().includes(searchQuery);
-        const catMatch = (clubInfo.category || '').toLowerCase().includes(searchQuery);
-        return nameMatch || posMatch || catMatch;
-      });
+    document.getElementById('formPhysical').addEventListener('submit',async e=>{e.preventDefault();const pid=document.getElementById('physPlayerId').value;if(!pid)return;const pObj=players.find(x=>x.id===pid);const payload={user_id:currentUser.id,player_id:pid,flexiones:document.getElementById('physPushups').value||'N/R',abdominales:document.getElementById('physSitups').value||'N/R',velocidad_agilidad:document.getElementById('physSpeed').value.trim()||'N/R',resistencia_aerobica:document.getElementById('physEndurance').value.trim()||'N/R',diagnostico:document.getElementById('physStatus').value,notes:document.getElementById('physNotes').value.trim()};try{const{data,error}=await supabaseClient.from('physical').insert(payload).select().single();if(error)throw error;physicalLogs.unshift({id:data.id,playerId:pid,playerName:pObj?pObj.name:'Desconocido',date:new Date(data.created_at||Date.now()).toLocaleDateString('es-AR'),pushups:payload.flexiones,situps:payload.abdominales,speed:payload.velocidad_agilidad,endurance:payload.resistencia_aerobica,status:payload.diagnostico,notes:payload.notes});document.getElementById('formPhysical').reset();renderPhysicalLogs();}catch(err){alert('No se pudo guardar la evaluación: '+supabaseErrorMessage(err));}});
+    function renderPhysicalLogs(){const container=document.getElementById('physicalLogsList');container.innerHTML='';if(physicalLogs.length===0){container.innerHTML='<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin evaluaciones físicas registradas.</div>';return;}physicalLogs.forEach(log=>{const card=document.createElement('div');card.className='bg-slate-800 p-3 rounded-xl border border-slate-700/60 text-xs space-y-2 relative';let statusBadge='bg-emerald-500/20 text-emerald-300 border-emerald-500/30';if(log.status==='Regular')statusBadge='bg-amber-500/20 text-amber-300 border-amber-500/30';if(log.status==='Lesionado')statusBadge='bg-red-500/20 text-red-300 border-red-500/30';card.innerHTML=`<div class="flex justify-between items-start"><div><h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)}</h5><span class="text-[10px] text-slate-400">${escapeHTML(log.date)}</span></div><span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(log.status)}</span></div><div class="grid grid-cols-2 gap-2 bg-slate-900/60 p-2 rounded-lg font-mono text-[11px] text-slate-300 border border-slate-700/40"><div>💪 Flexiones: <b>${escapeHTML(log.pushups)}</b></div><div>🧘 Abdominales: <b>${escapeHTML(log.situps)}</b></div><div>⚡ Velocidad: <b>${escapeHTML(log.speed)}</b></div><div>🫁 Resistencia: <b>${escapeHTML(log.endurance)}</b></div></div>${log.notes?`<p class="text-[11px] text-slate-400 italic bg-slate-900/30 p-2 rounded-lg border border-slate-700/30">${escapeHTML(log.notes)}</p>`:''}<button onclick="deletePhysicalLog('${log.id}')" class="absolute bottom-2 right-2 text-slate-500 hover:text-red-400 text-xs p-1"><i class="fa-solid fa-trash-can"></i></button>`;container.appendChild(card);});}
+    window.deletePhysicalLog=async function(id){try{const{error}=await supabaseClient.from('physical').delete().eq('id',id).eq('user_id',currentUser.id);if(error)throw error;physicalLogs=physicalLogs.filter(l=>l.id!==id);renderPhysicalLogs();}catch(err){alert('No se pudo eliminar: '+supabaseErrorMessage(err));}};
 
-      countBadge.textContent = `${filteredPlayers.length} / ${players.length} jugadores`;
+    window.toggleConductFields=function(){const isNegative=document.querySelector('input[name="conductType"]:checked').value==='negative';document.getElementById('sanctionFieldsContainer').classList.toggle('hidden',!isNegative);};
+    document.getElementById('formConduct').addEventListener('submit',async e=>{e.preventDefault();const pid=document.getElementById('condPlayerId').value;if(!pid)return;const isNegative=document.querySelector('input[name="conductType"]:checked').value==='negative',pObj=players.find(x=>x.id===pid),detail=JSON.stringify({incident:document.getElementById('condIncident').value.trim(),sanction:isNegative?document.getElementById('condSanction').value:'Felicitación / Reconocimiento',status:isNegative?document.getElementById('condStatus').value:'Finalizada / Levantada',date:new Date().toLocaleDateString('es-AR')});const payload={user_id:currentUser.id,player_id:pid,type:isNegative?'negative':'positive',tutor:document.getElementById('condParent').value.trim(),detail};try{const{data,error}=await supabaseClient.from('conduct').insert(payload).select().single();if(error)throw error;let extra=JSON.parse(detail);conductLogs.unshift({id:data.id,playerId:pid,playerName:pObj?pObj.name:'Desconocido',type:payload.type,parent:payload.tutor,incident:extra.incident,sanction:extra.sanction,status:extra.status,date:extra.date});document.getElementById('formConduct').reset();toggleConductFields();renderConductLogs();}catch(err){alert('No se pudo guardar el registro: '+supabaseErrorMessage(err));}});
+    function renderConductLogs(){const container=document.getElementById('sanctionsList');if(!container)return;container.innerHTML='';if(conductLogs.length===0){container.innerHTML='<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin registros de conducta ni sanciones.</div>';return;}conductLogs.forEach(log=>{const card=document.createElement('div'),isPos=log.type==='positive';card.className=`bg-slate-800 p-3 rounded-xl border text-xs space-y-2 relative shadow-sm transition ${isPos?'border-emerald-500/40 hover:border-emerald-400':'border-red-500/40 hover:border-red-400'}`;let statusBadge='bg-emerald-500/20 text-emerald-300 border-emerald-500/30';if(log.status==='En Revisión')statusBadge='bg-amber-500/20 text-amber-300 border-amber-500/30';if(log.status==='Activa')statusBadge='bg-red-500/20 text-red-300 border-red-500/30';card.innerHTML=`<div class="flex justify-between items-start"><div><div class="flex items-center gap-1.5"><span class="text-sm">${isPos?'👏':'⚠️'}</span><h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)} <span class="text-slate-400 text-[11px] font-normal">(Tutor: ${escapeHTML(log.parent)})</span></h5></div><span class="text-[10px] text-slate-400">${escapeHTML(log.date)}</span></div><span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(isPos?'Reconocimiento':log.status)}</span></div><div class="bg-slate-900/60 p-2.5 rounded-lg text-slate-300 border border-slate-700/40 space-y-1"><p><b>Detalle:</b> ${escapeHTML(log.incident)}</p><p class="${isPos?'text-emerald-400':'text-amber-400'}"><b>Medida:</b> ${escapeHTML(log.sanction)}</p></div><button onclick="deleteConductLog('${log.id}')" class="absolute bottom-2 right-2 text-slate-500 hover:text-red-400 text-xs p-1 transition" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>`;container.appendChild(card);});}
+    window.deleteConductLog=async function(id){try{const{error}=await supabaseClient.from('conduct').delete().eq('id',id).eq('user_id',currentUser.id);if(error)throw error;conductLogs=conductLogs.filter(l=>l.id!==id);renderConductLogs();}catch(err){alert('No se pudo eliminar: '+supabaseErrorMessage(err));}};
 
-      if (filteredPlayers.length === 0) {
-        container.innerHTML = `
-          <div class="bg-slate-800/60 p-6 rounded-2xl text-center text-xs text-slate-400 border border-slate-700/60 flex flex-col items-center gap-2">
-            <i class="fa-solid fa-users-slash text-2xl text-slate-500"></i>
-            <span>${searchQuery ? 'No se encontraron jugadores.' : 'No hay jugadores registrados.'}</span>
-          </div>`;
+    window.setAttendanceEntryMode=function(mode){attendanceEntryMode=mode;const btnInd=document.getElementById('btnModeIndividual'),btnMass=document.getElementById('btnModeMass'),a=document.getElementById('individualPlayerSelectContainer'),b=document.getElementById('individualStatusSelectContainer'),c=document.getElementById('individualReasonContainer'),d=document.getElementById('massAttendanceContainer');if(mode==='individual'){btnInd.className='px-2 py-1 rounded-lg bg-emerald-600 text-white transition';btnMass.className='px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition';a.classList.remove('hidden');b.classList.remove('hidden');c.classList.remove('hidden');d.classList.add('hidden');}else{btnMass.className='px-2 py-1 rounded-lg bg-emerald-600 text-white transition';btnInd.className='px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition';a.classList.add('hidden');b.classList.add('hidden');c.classList.add('hidden');d.classList.remove('hidden');renderMassAttendanceForm();}};
+    function renderMassAttendanceForm(){const container=document.getElementById('massPlayersList');if(!container)return;container.innerHTML='';if(players.length===0){container.innerHTML='<p class="text-xs text-slate-400 italic">No hay jugadores en la plantilla para carga masiva.</p>';return;}players.forEach(p=>{const item=document.createElement('div');item.className='bg-slate-900/80 p-2 rounded-xl border border-slate-700/60 flex items-center justify-between text-xs';item.innerHTML=`<span class="font-bold text-slate-100 truncate max-w-[130px]">${escapeHTML(p.name)}</span><select data-mass-player-id="${p.id}" class="mass-status-select bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-[11px] focus:outline-none"><option value="Presente">🟢 Presente</option><option value="Ausente">🔴 Ausente</option><option value="Ausente Justificado">🔵 Justificado</option><option value="Llegada Tarde">🟠 Tarde</option></select>`;container.appendChild(item);});}
+
+    document.getElementById('formAttendance').addEventListener('submit',async e=>{e.preventDefault();const dateVal=document.getElementById('attDate').value,actVal=document.getElementById('attActivity').value;if(!dateVal)return;const rows=[];if(attendanceEntryMode==='individual'){const pid=document.getElementById('attPlayerId').value;if(!pid)return;rows.push({playerId:pid,status:document.getElementById('attStatus').value,reason:document.getElementById('attReason').value.trim()});}else{document.querySelectorAll('.mass-status-select').forEach(sel=>rows.push({playerId:sel.dataset.massPlayerId,status:sel.value,reason:'Carga Masiva'}));}try{for(const row of rows){const payload={user_id:currentUser.id,player_id:row.playerId,date:dateVal,activity:row.reason?`${actVal} | ${row.reason}`:actVal,status:row.status};const{data,error}=await supabaseClient.from('attendance').insert(payload).select().single();if(error)throw error;const pObj=players.find(x=>x.id===row.playerId);attendanceLogs.unshift({id:data.id,playerId:row.playerId,playerName:pObj?pObj.name:'Desconocido',date:dateVal,activity:actVal,status:row.status,reason:row.reason});}document.getElementById('attReason').value='';renderAttendanceLogs();renderAttendanceGrid();}catch(err){alert('No se pudo guardar la asistencia: '+supabaseErrorMessage(err));}});
+    function renderAttendanceLogs(){const container=document.getElementById('attendanceLogsList');container.innerHTML='';if(attendanceLogs.length===0){container.innerHTML='<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin registros de asistencia.</div>';return;}attendanceLogs.slice(0,15).forEach(log=>{const card=document.createElement('div');card.className='bg-slate-800 p-3 rounded-xl border border-slate-700/60 text-xs flex items-center justify-between';let statusBadge='bg-emerald-500/20 text-emerald-300 border-emerald-500/30';if(log.status==='Ausente')statusBadge='bg-red-500/20 text-red-300 border-red-500/30';if(log.status==='Ausente Justificado')statusBadge='bg-blue-500/20 text-blue-300 border-blue-500/30';if(log.status==='Llegada Tarde')statusBadge='bg-amber-500/20 text-amber-300 border-amber-500/30';card.innerHTML=`<div><h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)}</h5><p class="text-emerald-400 text-[11px]">${escapeHTML(log.activity)} • <span class="text-slate-400 font-mono">${escapeHTML(log.date)}</span></p>${log.reason?`<p class="text-[10px] text-slate-400 italic mt-0.5">${escapeHTML(log.reason)}</p>`:''}</div><div class="flex items-center space-x-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(log.status)}</span><button onclick="deleteAttendanceLog('${log.id}')" class="text-slate-500 hover:text-red-400 text-xs p-1"><i class="fa-solid fa-trash-can"></i></button></div>`;container.appendChild(card);});}
+    window.deleteAttendanceLog=async function(id){try{const{error}=await supabaseClient.from('attendance').delete().eq('id',id).eq('user_id',currentUser.id);if(error)throw error;attendanceLogs=attendanceLogs.filter(l=>l.id!==id);renderAttendanceLogs();renderAttendanceGrid();}catch(err){alert('No se pudo eliminar: '+supabaseErrorMessage(err));}};
+
+    // Attendance matrix kept visually/functionally identical to the original version.
+    function renderAttendanceGrid(){
+      const container=document.getElementById('generalAttendanceGridContainer');if(!container)return;container.innerHTML='';
+      if(players.length===0){container.innerHTML='<div class="bg-slate-800/60 p-6 rounded-2xl text-center text-xs text-slate-400 border border-slate-700/60 flex flex-col items-center gap-2"><i class="fa-solid fa-users text-2xl text-slate-500"></i><span>No hay jugadores registrados para mostrar en el resumen general.</span></div>';return;}
+      const activityFilter=document.getElementById('gridFilterActivity')?document.getElementById('gridFilterActivity').value:'ALL',sortOrder=document.getElementById('gridSortOrder')?document.getElementById('gridSortOrder').value:'NAME';let filteredLogs=[...attendanceLogs];if(activityFilter!=='ALL')filteredLogs=filteredLogs.filter(l=>l.activity===activityFilter);const uniqueDates=Array.from(new Set(filteredLogs.map(l=>l.date))).sort((a,b)=>new Date(b)-new Date(a));const playerStats=players.map(p=>{const pLogs=filteredLogs.filter(l=>l.playerId===p.id),total=pLogs.length,presentCount=pLogs.filter(l=>l.status==='Presente').length,lateCount=pLogs.filter(l=>l.status==='Llegada Tarde').length,absentCount=pLogs.filter(l=>l.status==='Ausente').length,justifiedCount=pLogs.filter(l=>l.status==='Ausente Justificado').length,percent=total>0?Math.round(((presentCount+lateCount)/total)*100):0;return{player:p,logs:pLogs,total,presentCount,lateCount,absentCount,justifiedCount,percent};});playerStats.sort((a,b)=>sortOrder==='PERCENT_DESC'?b.percent-a.percent:sortOrder==='PERCENT_ASC'?a.percent-b.percent:a.player.name.localeCompare(b.player.name));
+      playerStats.forEach(st=>{const p=st.player,card=document.createElement('div');card.className='bg-slate-800 p-3.5 rounded-2xl border border-slate-700/60 shadow-md space-y-3';let percentColor='text-emerald-400 border-emerald-500/40 bg-emerald-500/10';if(st.percent<75)percentColor='text-amber-400 border-amber-500/40 bg-amber-500/10';if(st.percent<50)percentColor='text-red-400 border-red-500/40 bg-red-500/10';card.innerHTML=`<div class="flex items-center justify-between border-b border-slate-700/50 pb-2.5"><div class="flex items-center space-x-2.5"><div class="w-10 h-10 rounded-full bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden flex-shrink-0">${p.photo?`<img src="${p.photo}" class="w-full h-full object-cover">`:'<i class="fa-solid fa-user text-slate-500 text-base"></i>'}</div><div><h5 class="font-bold text-slate-100 text-sm leading-tight">${escapeHTML(p.name)}</h5><p class="text-[10px] text-emerald-400 font-semibold">${escapeHTML(p.position)}</p></div></div><div class="text-right"><div class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border ${percentColor} font-bold text-xs font-mono"><i class="fa-solid fa-chart-pie text-[10px]"></i><span>${st.total>0?st.percent+'%':'S/R'}</span></div><p class="text-[9px] text-slate-400 mt-0.5">${st.presentCount+st.lateCount} de ${st.total} días registrados</p></div></div><div class="grid grid-cols-4 gap-1.5 text-center text-[10px] font-mono"><div class="bg-slate-900/80 p-1.5 rounded-xl border border-emerald-500/30 text-emerald-300"><span class="block text-[8px] uppercase text-slate-400 font-sans">Presente 🟢</span><span class="font-bold text-xs">${st.presentCount}</span></div><div class="bg-slate-900/80 p-1.5 rounded-xl border border-amber-500/30 text-amber-300"><span class="block text-[8px] uppercase text-slate-400 font-sans">Tarde 🟠</span><span class="font-bold text-xs">${st.lateCount}</span></div><div class="bg-slate-900/80 p-1.5 rounded-xl border border-blue-500/30 text-blue-300"><span class="block text-[8px] uppercase text-slate-400 font-sans">Justif. 🔵</span><span class="font-bold text-xs">${st.justifiedCount}</span></div><div class="bg-slate-900/80 p-1.5 rounded-xl border border-red-500/30 text-red-300"><span class="block text-[8px] uppercase text-slate-400 font-sans">Ausente 🔴</span><span class="font-bold text-xs">${st.absentCount}</span></div></div><div><span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5">Matriz del Historial de Fechas:</span>${uniqueDates.length===0?'<p class="text-[10px] text-slate-500 italic">Sin registros para el filtro seleccionado.</p>':`<div class="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">${uniqueDates.map(d=>{const entry=st.logs.find(l=>l.date===d);let badgeBg='bg-slate-700/60 border-slate-600 text-slate-400',statusIcon='•';if(entry){if(entry.status==='Presente'){badgeBg='bg-emerald-600/30 border-emerald-500/50 text-emerald-300';statusIcon='🟢';}else if(entry.status==='Llegada Tarde'){badgeBg='bg-amber-600/30 border-amber-500/50 text-amber-300';statusIcon='🟠';}else if(entry.status==='Ausente Justificado'){badgeBg='bg-blue-600/30 border-blue-500/50 text-blue-300';statusIcon='🔵';}else if(entry.status==='Ausente'){badgeBg='bg-red-600/30 border-red-500/50 text-red-300';statusIcon='🔴';}}const dateShort=d.split('-').slice(1).join('/');return `<div class="flex-shrink-0 flex flex-col items-center px-2 py-1 rounded-lg border ${badgeBg} text-[10px] min-w-[42px] transition" title="${d}: ${entry?entry.status:'Sin registro'}"><span class="font-bold text-xs">${statusIcon}</span><span class="text-[8px] font-mono">${dateShort}</span></div>`;}).join('')}</div>`}</div>`;container.appendChild(card);});
+    }
+
+    async function handlePasswordRecovery() {
+      const newPassword = prompt('Ingresá tu nueva contraseña (mínimo 6 caracteres):');
+      if (newPassword === null) return;
+      if (newPassword.length < 6) {
+        alert('La contraseña debe tener al menos 6 caracteres.');
         return;
       }
-
-      filteredPlayers.forEach(p => {
-        const card = document.createElement('div');
-        card.className = "bg-slate-800 p-3.5 rounded-2xl border border-slate-700/60 shadow-md flex flex-col space-y-3 transition hover:border-slate-600";
-        
-        const photoSrc = p.photo || '';
-        const ageStr = calculateAge(p.dob);
-        const dobFormatted = p.dob ? new Date(p.dob + 'T00:00:00').toLocaleDateString('es-AR') : 'N/A';
-
-        card.innerHTML = `
-          <div class="flex items-start space-x-3">
-            <div class="w-12 h-12 rounded-full bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden flex-shrink-0 shadow">
-              ${photoSrc 
-                ? `<img src="${photoSrc}" class="w-full h-full object-cover">` 
-                : `<i class="fa-solid fa-user text-slate-500 text-lg"></i>`}
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center justify-between">
-                <h5 class="font-bold text-slate-100 text-sm truncate">${escapeHTML(p.name)}</h5>
-                <div class="flex items-center space-x-1">
-                  <button onclick="editPlayer('${p.id}')" class="p-1.5 text-emerald-400 hover:bg-slate-700/60 rounded-lg transition" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button>
-                  <button onclick="deletePlayer('${p.id}')" class="p-1.5 text-red-400 hover:bg-slate-700/60 rounded-lg transition" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
-                </div>
-              </div>
-              <p class="text-xs text-emerald-400 font-semibold">${escapeHTML(p.position)}</p>
-              <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-400 mt-0.5">
-                <span>🎂 ${dobFormatted} (${ageStr})</span>
-                <span>•</span>
-                <span>🦶 Pie: ${escapeHTML(p.foot || 'Derecho')}</span>
-                <span>•</span>
-                <span class="text-emerald-300 font-mono">Cat: ${escapeHTML(clubInfo.category || 'N/A')}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="pt-2 border-t border-slate-700/50 grid grid-cols-3 gap-1.5 text-[10px]">
-            <button onclick="quickAction('physical', '${p.id}')" class="bg-slate-900/80 hover:bg-emerald-950 text-emerald-300 border border-emerald-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium">
-              <i class="fa-solid fa-dumbbell"></i> Físico
-            </button>
-            <button onclick="quickAction('conduct', '${p.id}')" class="bg-slate-900/80 hover:bg-amber-950 text-amber-300 border border-amber-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium">
-              <i class="fa-solid fa-gavel"></i> Conducta
-            </button>
-            <button onclick="quickAction('attendance', '${p.id}')" class="bg-slate-900/80 hover:bg-blue-950 text-blue-300 border border-blue-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium">
-              <i class="fa-solid fa-calendar-check"></i> Asistencia
-            </button>
-          </div>
-        `;
-        container.appendChild(card);
-      });
+      try {
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        alert('Contraseña actualizada correctamente. Ya podés ingresar con tu nueva contraseña.');
+        await supabaseClient.auth.signOut();
+      } catch (error) {
+        console.error(error);
+        alert('No se pudo actualizar la contraseña: ' + supabaseErrorMessage(error));
+      }
     }
 
-    window.editPlayer = function(id) {
-      const p = players.find(x => x.id === id);
-      if (!p) return;
-      document.getElementById('playerId').value = p.id;
-      document.getElementById('playerName').value = p.name;
-      document.getElementById('playerDob').value = p.dob || '';
-      document.getElementById('playerPosition').value = p.position;
-      document.getElementById('playerFoot').value = p.foot || 'Derecho';
-      currentPhotoBase64 = p.photo || '';
-      setPhotoPreview(currentPhotoBase64);
-
-      playerFormTitle.textContent = 'Editar Jugador';
-      document.getElementById('btnSavePlayer').querySelector('span').textContent = 'Actualizar Jugador';
-      btnCancelEditPlayer.classList.remove('hidden');
-      document.getElementById('formPlayer').scrollIntoView({ behavior: 'smooth' });
-    };
-
-    window.deletePlayer = function(id) {
-      if (confirm('¿Estás seguro de eliminar este jugador?')) {
-        players = players.filter(p => p.id !== id);
-        setItem(STORAGE_PLAYERS, players);
-        renderPlayers();
-        populatePlayerDropdowns();
-        renderAttendanceGrid();
-        renderMassAttendanceForm();
-      }
-    };
-
-    window.quickAction = function(module, playerId) {
-      if (module === 'physical') {
-        switchToTab('tabPhysical');
-        document.getElementById('physPlayerId').value = playerId;
-      } else if (module === 'conduct') {
-        switchToTab('tabConduct');
-        document.getElementById('condPlayerId').value = playerId;
-      } else if (module === 'attendance') {
-        switchToTab('tabAttendance');
-        setAttendanceEntryMode('individual');
-        document.getElementById('attPlayerId').value = playerId;
-      }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    function populatePlayerDropdowns() {
-      const dropdowns = ['physPlayerId', 'condPlayerId', 'attPlayerId'];
-      dropdowns.forEach(ddId => {
-        const select = document.getElementById(ddId);
-        select.innerHTML = players.length === 0 ? '<option value="">Sin jugadores creados</option>' : '';
-        players.forEach(p => {
-          select.innerHTML += `<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.position)})</option>`;
-        });
-      });
-    }
-
-    document.getElementById('formPhysical').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const pid = document.getElementById('physPlayerId').value;
-      if (!pid) return;
-
-      const pObj = players.find(x => x.id === pid);
-      const log = {
-        id: 'phys_' + Date.now(),
-        playerId: pid,
-        playerName: pObj ? pObj.name : 'Desconocido',
-        date: new Date().toLocaleDateString('es-AR'),
-        pushups: document.getElementById('physPushups').value || 'N/R',
-        situps: document.getElementById('physSitups').value || 'N/R',
-        speed: document.getElementById('physSpeed').value.trim() || 'N/R',
-        endurance: document.getElementById('physEndurance').value.trim() || 'N/R',
-        status: document.getElementById('physStatus').value,
-        notes: document.getElementById('physNotes').value.trim()
-      };
-
-      physicalLogs.unshift(log);
-      setItem(STORAGE_PHYSICAL, physicalLogs);
-      document.getElementById('formPhysical').reset();
-      renderPhysicalLogs();
-    });
-
-    function renderPhysicalLogs() {
-      const container = document.getElementById('physicalLogsList');
-      container.innerHTML = '';
-
-      if (physicalLogs.length === 0) {
-        container.innerHTML = `<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin evaluaciones físicas registradas.</div>`;
+    // Supabase session is the only source of authentication now.
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' && session) {
+        setTimeout(() => handlePasswordRecovery(), 0);
         return;
       }
-
-      physicalLogs.forEach(log => {
-        const card = document.createElement('div');
-        card.className = "bg-slate-800 p-3 rounded-xl border border-slate-700/60 text-xs space-y-2 relative";
-        
-        let statusBadge = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-        if (log.status === 'Regular') statusBadge = "bg-amber-500/20 text-amber-300 border-amber-500/30";
-        if (log.status === 'Lesionado') statusBadge = "bg-red-500/20 text-red-300 border-red-500/30";
-
-        card.innerHTML = `
-          <div class="flex justify-between items-start">
-            <div>
-              <h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)}</h5>
-              <span class="text-[10px] text-slate-400">${escapeHTML(log.date)}</span>
-            </div>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(log.status)}</span>
-          </div>
-          <div class="grid grid-cols-2 gap-2 bg-slate-900/60 p-2 rounded-lg font-mono text-[11px] text-slate-300 border border-slate-700/40">
-            <div>💪 Flexiones: <b>${escapeHTML(log.pushups)}</b></div>
-            <div>🧘 Abdominales: <b>${escapeHTML(log.situps)}</b></div>
-            <div>⚡ Velocidad: <b>${escapeHTML(log.speed)}</b></div>
-            <div>🫁 Resistencia: <b>${escapeHTML(log.endurance)}</b></div>
-          </div>
-          ${log.notes ? `<p class="text-[11px] text-slate-400 italic bg-slate-900/30 p-2 rounded-lg border border-slate-700/30">${escapeHTML(log.notes)}</p>` : ''}
-          <button onclick="deletePhysicalLog('${log.id}')" class="absolute bottom-2 right-2 text-slate-500 hover:text-red-400 text-xs p-1"><i class="fa-solid fa-trash-can"></i></button>
-        `;
-        container.appendChild(card);
-      });
-    }
-
-    window.deletePhysicalLog = function(id) {
-      physicalLogs = physicalLogs.filter(l => l.id !== id);
-      setItem(STORAGE_PHYSICAL, physicalLogs);
-      renderPhysicalLogs();
-    };
-
-    window.toggleConductFields = function() {
-      const isNegative = document.querySelector('input[name="conductType"]:checked').value === 'negative';
-      document.getElementById('sanctionFieldsContainer').classList.toggle('hidden', !isNegative);
-    };
-
-    document.getElementById('formConduct').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const pid = document.getElementById('condPlayerId').value;
-      if (!pid) return;
-
-      const isNegative = document.querySelector('input[name="conductType"]:checked').value === 'negative';
-      const pObj = players.find(x => x.id === pid);
-
-      const log = {
-        id: 'cond_' + Date.now(),
-        playerId: pid,
-        playerName: pObj ? pObj.name : 'Desconocido',
-        type: isNegative ? 'negative' : 'positive',
-        parent: document.getElementById('condParent').value.trim(),
-        incident: document.getElementById('condIncident').value.trim(),
-        sanction: isNegative ? document.getElementById('condSanction').value : 'Felicitación / Reconocimiento',
-        status: isNegative ? document.getElementById('condStatus').value : 'Finalizada / Levantada',
-        date: new Date().toLocaleDateString('es-AR')
-      };
-
-      conductLogs.unshift(log);
-      setItem(STORAGE_CONDUCT, conductLogs);
-      
-      document.getElementById('formConduct').reset();
-      toggleConductFields();
-      renderConductLogs();
-    });
-
-    function renderConductLogs() {
-      const container = document.getElementById('sanctionsList');
-      if (!container) return;
-      container.innerHTML = '';
-
-      if (conductLogs.length === 0) {
-        container.innerHTML = `<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin registros de conducta ni sanciones.</div>`;
+      if (event === 'SIGNED_OUT') {
+        currentUser = null;
+        appHeader.classList.add('hidden'); dashboardSection.classList.add('hidden'); authSection.classList.remove('hidden');
         return;
       }
-
-      conductLogs.forEach(log => {
-        const card = document.createElement('div');
-        const isPos = log.type === 'positive';
-        
-        card.className = `bg-slate-800 p-3 rounded-xl border text-xs space-y-2 relative shadow-sm transition ${isPos ? 'border-emerald-500/40 hover:border-emerald-400' : 'border-red-500/40 hover:border-red-400'}`;
-        
-        let statusBadge = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-        if (log.status === 'En Revisión') statusBadge = "bg-amber-500/20 text-amber-300 border-amber-500/30";
-        if (log.status === 'Activa') statusBadge = "bg-red-500/20 text-red-300 border-red-500/30";
-
-        card.innerHTML = `
-          <div class="flex justify-between items-start">
-            <div>
-              <div class="flex items-center gap-1.5">
-                <span class="text-sm">${isPos ? '👏' : '⚠️'}</span>
-                <h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)} <span class="text-slate-400 text-[11px] font-normal">(Tutor: ${escapeHTML(log.parent)})</span></h5>
-              </div>
-              <span class="text-[10px] text-slate-400">${escapeHTML(log.date)}</span>
-            </div>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(isPos ? 'Reconocimiento' : log.status)}</span>
-          </div>
-          <div class="bg-slate-900/60 p-2.5 rounded-lg text-slate-300 border border-slate-700/40 space-y-1">
-            <p><b>Detalle:</b> ${escapeHTML(log.incident)}</p>
-            <p class="${isPos ? 'text-emerald-400' : 'text-amber-400'}"><b>Medida:</b> ${escapeHTML(log.sanction)}</p>
-          </div>
-          <button onclick="deleteConductLog('${log.id}')" class="absolute bottom-2 right-2 text-slate-500 hover:text-red-400 text-xs p-1 transition" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
-        `;
-        container.appendChild(card);
-      });
-    }
-
-    window.deleteConductLog = function(id) {
-      conductLogs = conductLogs.filter(l => l.id !== id);
-      setItem(STORAGE_CONDUCT, conductLogs);
-      renderConductLogs();
-    };
-
-    window.setAttendanceEntryMode = function(mode) {
-      attendanceEntryMode = mode;
-      const btnInd = document.getElementById('btnModeIndividual');
-      const btnMass = document.getElementById('btnModeMass');
-
-      const indPlayerContainer = document.getElementById('individualPlayerSelectContainer');
-      const indStatusContainer = document.getElementById('individualStatusSelectContainer');
-      const indReasonContainer = document.getElementById('individualReasonContainer');
-      const massContainer = document.getElementById('massAttendanceContainer');
-
-      if (mode === 'individual') {
-        btnInd.className = "px-2 py-1 rounded-lg bg-emerald-600 text-white transition";
-        btnMass.className = "px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition";
-        indPlayerContainer.classList.remove('hidden');
-        indStatusContainer.classList.remove('hidden');
-        indReasonContainer.classList.remove('hidden');
-        massContainer.classList.add('hidden');
-      } else {
-        btnMass.className = "px-2 py-1 rounded-lg bg-emerald-600 text-white transition";
-        btnInd.className = "px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition";
-        indPlayerContainer.classList.add('hidden');
-        indStatusContainer.classList.add('hidden');
-        indReasonContainer.classList.add('hidden');
-        massContainer.classList.remove('hidden');
-        renderMassAttendanceForm();
-      }
-    };
-
-    function renderMassAttendanceForm() {
-      const container = document.getElementById('massPlayersList');
-      if (!container) return;
-      container.innerHTML = '';
-
-      if (players.length === 0) {
-        container.innerHTML = `<p class="text-xs text-slate-400 italic">No hay jugadores en la plantilla para carga masiva.</p>`;
-        return;
-      }
-
-      players.forEach(p => {
-        const item = document.createElement('div');
-        item.className = "bg-slate-900/80 p-2 rounded-xl border border-slate-700/60 flex items-center justify-between text-xs";
-        item.innerHTML = `
-          <span class="font-bold text-slate-100 truncate max-w-[130px]">${escapeHTML(p.name)}</span>
-          <select data-mass-player-id="${p.id}" class="mass-status-select bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-[11px] focus:outline-none">
-            <option value="Presente">🟢 Presente</option>
-            <option value="Ausente">🔴 Ausente</option>
-            <option value="Ausente Justificado">🔵 Justificado</option>
-            <option value="Llegada Tarde">🟠 Tarde</option>
-          </select>
-        `;
-        container.appendChild(item);
-      });
-    }
-
-    document.getElementById('formAttendance').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const dateVal = document.getElementById('attDate').value;
-      const actVal = document.getElementById('attActivity').value;
-
-      if (!dateVal) return;
-
-      if (attendanceEntryMode === 'individual') {
-        const pid = document.getElementById('attPlayerId').value;
-        if (!pid) return;
-
-        const pObj = players.find(x => x.id === pid);
-        const log = {
-          id: 'att_' + Date.now(),
-          playerId: pid,
-          playerName: pObj ? pObj.name : 'Desconocido',
-          date: dateVal,
-          activity: actVal,
-          status: document.getElementById('attStatus').value,
-          reason: document.getElementById('attReason').value.trim()
-        };
-
-        attendanceLogs.unshift(log);
-        document.getElementById('attReason').value = '';
-      } else {
-        // Mass entry logic
-        const selects = document.querySelectorAll('.mass-status-select');
-        selects.forEach(sel => {
-          const pid = sel.dataset.massPlayerId;
-          const pObj = players.find(x => x.id === pid);
-          if (pObj) {
-            attendanceLogs.unshift({
-              id: 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-              playerId: pid,
-              playerName: pObj.name,
-              date: dateVal,
-              activity: actVal,
-              status: sel.value,
-              reason: 'Carga Masiva'
-            });
-          }
-        });
-      }
-
-      setItem(STORAGE_ATTENDANCE, attendanceLogs);
-      
-      // Instant synchronization across tabs
-      renderAttendanceLogs();
-      renderAttendanceGrid();
-    });
-
-    function renderAttendanceLogs() {
-      const container = document.getElementById('attendanceLogsList');
-      container.innerHTML = '';
-
-      if (attendanceLogs.length === 0) {
-        container.innerHTML = `<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin registros de asistencia.</div>`;
-        return;
-      }
-
-      // Display latest 15 attendance logs
-      attendanceLogs.slice(0, 15).forEach(log => {
-        const card = document.createElement('div');
-        card.className = "bg-slate-800 p-3 rounded-xl border border-slate-700/60 text-xs flex items-center justify-between";
-        
-        let statusBadge = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-        if (log.status === 'Ausente') statusBadge = "bg-red-500/20 text-red-300 border-red-500/30";
-        if (log.status === 'Ausente Justificado') statusBadge = "bg-blue-500/20 text-blue-300 border-blue-500/30";
-        if (log.status === 'Llegada Tarde') statusBadge = "bg-amber-500/20 text-amber-300 border-amber-500/30";
-
-        card.innerHTML = `
-          <div>
-            <h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)}</h5>
-            <p class="text-emerald-400 text-[11px]">${escapeHTML(log.activity)} • <span class="text-slate-400 font-mono">${escapeHTML(log.date)}</span></p>
-            ${log.reason ? `<p class="text-[10px] text-slate-400 italic mt-0.5">${escapeHTML(log.reason)}</p>` : ''}
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(log.status)}</span>
-            <button onclick="deleteAttendanceLog('${log.id}')" class="text-slate-500 hover:text-red-400 text-xs p-1"><i class="fa-solid fa-trash-can"></i></button>
-          </div>
-        `;
-        container.appendChild(card);
-      });
-    }
-
-    window.deleteAttendanceLog = function(id) {
-      attendanceLogs = attendanceLogs.filter(l => l.id !== id);
-      setItem(STORAGE_ATTENDANCE, attendanceLogs);
-      renderAttendanceLogs();
-      renderAttendanceGrid();
-    };
-
-    function renderAttendanceGrid() {
-      const container = document.getElementById('generalAttendanceGridContainer');
-      if (!container) return;
-      container.innerHTML = '';
-
-      if (players.length === 0) {
-        container.innerHTML = `
-          <div class="bg-slate-800/60 p-6 rounded-2xl text-center text-xs text-slate-400 border border-slate-700/60 flex flex-col items-center gap-2">
-            <i class="fa-solid fa-users text-2xl text-slate-500"></i>
-            <span>No hay jugadores registrados para mostrar en el resumen general.</span>
-          </div>`;
-        return;
-      }
-
-      const activityFilter = document.getElementById('gridFilterActivity') ? document.getElementById('gridFilterActivity').value : 'ALL';
-      const sortOrder = document.getElementById('gridSortOrder') ? document.getElementById('gridSortOrder').value : 'NAME';
-
-      // Filter logs by selected activity
-      let filteredLogs = [...attendanceLogs];
-      if (activityFilter !== 'ALL') {
-        filteredLogs = filteredLogs.filter(l => l.activity === activityFilter);
-      }
-
-      // Collect all recorded unique dates sorted chronologically
-      const uniqueDates = Array.from(new Set(filteredLogs.map(l => l.date))).sort((a, b) => new Date(b) - new Date(a));
-
-      // Calculate attendance statistics per player
-      const playerStats = players.map(p => {
-        const pLogs = filteredLogs.filter(l => l.playerId === p.id);
-        const total = pLogs.length;
-        const presentCount = pLogs.filter(l => l.status === 'Presente').length;
-        const lateCount = pLogs.filter(l => l.status === 'Llegada Tarde').length;
-        const absentCount = pLogs.filter(l => l.status === 'Ausente').length;
-        const justifiedCount = pLogs.filter(l => l.status === 'Ausente Justificado').length;
-
-        // Present or Late counted as positive attendance
-        const percent = total > 0 ? Math.round(((presentCount + lateCount) / total) * 100) : 0;
-
-        return {
-          player: p,
-          logs: pLogs,
-          total,
-          presentCount,
-          lateCount,
-          absentCount,
-          justifiedCount,
-          percent
-        };
-      });
-
-      // Sort player list according to selection
-      playerStats.sort((a, b) => {
-        if (sortOrder === 'PERCENT_DESC') return b.percent - a.percent;
-        if (sortOrder === 'PERCENT_ASC') return a.percent - b.percent;
-        return a.player.name.localeCompare(b.player.name);
-      });
-
-      // Render vertical matrix list: one player card stacked below another
-      playerStats.forEach(st => {
-        const p = st.player;
-        const card = document.createElement('div');
-        card.className = "bg-slate-800 p-3.5 rounded-2xl border border-slate-700/60 shadow-md space-y-3";
-
-        // Attendance meter color styling
-        let percentColor = "text-emerald-400 border-emerald-500/40 bg-emerald-500/10";
-        if (st.percent < 75) percentColor = "text-amber-400 border-amber-500/40 bg-amber-500/10";
-        if (st.percent < 50) percentColor = "text-red-400 border-red-500/40 bg-red-500/10";
-
-        card.innerHTML = `
-          <!-- Header: Player profile & Overall summary -->
-          <div class="flex items-center justify-between border-b border-slate-700/50 pb-2.5">
-            <div class="flex items-center space-x-2.5">
-              <div class="w-10 h-10 rounded-full bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden flex-shrink-0">
-                ${p.photo 
-                  ? `<img src="${p.photo}" class="w-full h-full object-cover">` 
-                  : `<i class="fa-solid fa-user text-slate-500 text-base"></i>`}
-              </div>
-              <div>
-                <h5 class="font-bold text-slate-100 text-sm leading-tight">${escapeHTML(p.name)}</h5>
-                <p class="text-[10px] text-emerald-400 font-semibold">${escapeHTML(p.position)}</p>
-              </div>
-            </div>
-
-            <!-- Attendance Badge Percentage & Count -->
-            <div class="text-right">
-              <div class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border ${percentColor} font-bold text-xs font-mono">
-                <i class="fa-solid fa-chart-pie text-[10px]"></i>
-                <span>${st.total > 0 ? st.percent + '%' : 'S/R'}</span>
-              </div>
-              <p class="text-[9px] text-slate-400 mt-0.5">${st.presentCount + st.lateCount} de ${st.total} días registrados</p>
-            </div>
-          </div>
-
-          <!-- Counter Breakdown Badges -->
-          <div class="grid grid-cols-4 gap-1.5 text-center text-[10px] font-mono">
-            <div class="bg-slate-900/80 p-1.5 rounded-xl border border-emerald-500/30 text-emerald-300">
-              <span class="block text-[8px] uppercase text-slate-400 font-sans">Presente 🟢</span>
-              <span class="font-bold text-xs">${st.presentCount}</span>
-            </div>
-            <div class="bg-slate-900/80 p-1.5 rounded-xl border border-amber-500/30 text-amber-300">
-              <span class="block text-[8px] uppercase text-slate-400 font-sans">Tarde 🟠</span>
-              <span class="font-bold text-xs">${st.lateCount}</span>
-            </div>
-            <div class="bg-slate-900/80 p-1.5 rounded-xl border border-blue-500/30 text-blue-300">
-              <span class="block text-[8px] uppercase text-slate-400 font-sans">Justif. 🔵</span>
-              <span class="font-bold text-xs">${st.justifiedCount}</span>
-            </div>
-            <div class="bg-slate-900/80 p-1.5 rounded-xl border border-red-500/30 text-red-300">
-              <span class="block text-[8px] uppercase text-slate-400 font-sans">Ausente 🔴</span>
-              <span class="font-bold text-xs">${st.absentCount}</span>
-            </div>
-          </div>
-
-          <!-- Color-coded Matrix Strip for dates -->
-          <div>
-            <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5">Matriz del Historial de Fechas:</span>
-            ${uniqueDates.length === 0 
-              ? `<p class="text-[10px] text-slate-500 italic">Sin registros para el filtro seleccionado.</p>`
-              : `<div class="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">
-                  ${uniqueDates.map(d => {
-                    const entry = st.logs.find(l => l.date === d);
-                    let badgeBg = "bg-slate-700/60 border-slate-600 text-slate-400";
-                    let statusIcon = "•";
-
-                    if (entry) {
-                      if (entry.status === 'Presente') {
-                        badgeBg = "bg-emerald-600/30 border-emerald-500/50 text-emerald-300";
-                        statusIcon = "🟢";
-                      } else if (entry.status === 'Llegada Tarde') {
-                        badgeBg = "bg-amber-600/30 border-amber-500/50 text-amber-300";
-                        statusIcon = "🟠";
-                      } else if (entry.status === 'Ausente Justificado') {
-                        badgeBg = "bg-blue-600/30 border-blue-500/50 text-blue-300";
-                        statusIcon = "🔵";
-                      } else if (entry.status === 'Ausente') {
-                        badgeBg = "bg-red-600/30 border-red-500/50 text-red-300";
-                        statusIcon = "🔴";
-                      }
-                    }
-
-                    const dateShort = d.split('-').slice(1).join('/');
-
-                    return `
-                      <div class="flex-shrink-0 flex flex-col items-center px-2 py-1 rounded-lg border ${badgeBg} text-[10px] min-w-[42px] transition" title="${d}: ${entry ? entry.status : 'Sin registro'}">
-                        <span class="font-bold text-xs">${statusIcon}</span>
-                        <span class="text-[8px] font-mono">${dateShort}</span>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>`
-            }
-          </div>
-        `;
-        container.appendChild(card);
-      });
-    }
-
-    // Auto Session Recovery on Load
-    window.addEventListener('DOMContentLoaded', () => {
-      const activeSession = localStorage.getItem(STORAGE_SESSION);
-      if (activeSession) {
-        initUserSession(activeSession);
+      if (session?.user && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        setTimeout(() => initUserSession(session.user), 0);
       }
     });
   </script>
