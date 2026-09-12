@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sistema de Gestión e Informes de Jugadores - DT</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: rgba(148, 163, 184, 0.3);
+      border-radius: 9999px;
+    }
+    @keyframes spin-once {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .spin-animation {
+      animation: spin-once 0.6s ease-in-out;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans bg-slate-900 text-slate-100">
+
+  <!-- Main Sticky Header Section -->
+  <header id="appHeader" class="bg-slate-800/95 backdrop-blur-md border-b border-slate-700/60 sticky top-0 z-30 hidden">
+    <div class="max-w-md mx-auto px-3 py-2.5 flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <!-- Club Shield Display Header -->
+        <div class="w-10 h-10 rounded-xl bg-slate-900 border border-emerald-500/50 flex items-center justify-center text-white shadow-md overflow-hidden flex-shrink-0">
+          <img id="headerClubLogo" src="" alt="Escudo" class="hidden w-full h-full object-cover">
+          <i id="headerClubPlaceholder" class="fa-solid fa-shield-halved text-emerald-400 text-lg"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="font-bold text-xs tracking-wide text-slate-100 leading-tight truncate" id="clubDisplayTitle">GestionDT</h1>
+          <p class="text-[10px] text-emerald-400 font-semibold truncate" id="clubDisplaySubtitle">Sin Club Definido</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-1.5">
+        <!-- Manual Refresh & Instant Sync Button -->
+        <button id="btnRefreshData" title="Actualizar y Sincronizar Datos" class="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/40 px-2.5 py-1.5 rounded-xl transition font-medium text-xs flex items-center gap-1 active:scale-95 shadow-sm">
+          <i class="fa-solid fa-rotate text-xs" id="refreshIcon"></i>
+          <span class="text-[10px] font-bold hidden sm:inline">Sincronizar</span>
+        </button>
+
+        <!-- User Session Indicator -->
+        <span id="navUserBadge" class="text-[11px] bg-slate-700/80 px-2.5 py-1 rounded-xl font-medium text-slate-300 flex items-center gap-1 border border-slate-600">
+          <i class="fa-solid fa-user-tie text-emerald-400"></i>
+          <span id="currentUserName">Usuario</span>
+        </span>
+        
+        <!-- Logout Button -->
+        <button id="btnLogout" title="Cerrar Sesión" class="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 p-2 rounded-xl transition font-medium flex items-center justify-center">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <section id="authSection" class="flex-1 flex items-center justify-center p-4">
+    <div class="bg-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-md border border-slate-700/70">
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center justify-center w-16 h-16 bg-emerald-600/20 text-emerald-400 rounded-2xl mb-3 border border-emerald-500/30 shadow-inner">
+          <i class="fa-solid fa-clipboard-user text-3xl"></i>
+        </div>
+        <h2 id="authTitle" class="text-2xl font-bold text-slate-100">Iniciar Sesión</h2>
+        <p id="authSubtitle" class="text-xs text-slate-400 mt-1">Ingresá tus credenciales para administrar el equipo</p>
+      </div>
+
+      <div id="authAlert" class="hidden mb-4 p-3 rounded-xl text-xs font-medium flex items-center gap-2"></div>
+
+      <form id="authForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Nombre de Usuario</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+              <i class="fa-solid fa-user"></i>
+            </span>
+            <input type="text" id="authUsername" required placeholder="Ej. profe_martinez" 
+              class="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none transition text-sm text-slate-100">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Contraseña</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+              <i class="fa-solid fa-lock"></i>
+            </span>
+            <input type="password" id="authPassword" required placeholder="••••••••" 
+              class="w-full pl-10 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none transition text-sm text-slate-100">
+            <button type="button" id="toggleAuthPass" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300">
+              <i class="fa-solid fa-eye" id="eyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" id="btnAuthSubmit" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/30 transition text-sm flex items-center justify-center gap-2">
+          <i class="fa-solid fa-right-to-bracket"></i> <span>Ingresar</span>
+        </button>
+      </form>
+
+      <div class="mt-6 pt-4 border-t border-slate-700/60 text-center">
+        <p class="text-xs text-slate-400">
+          <span id="toggleText">¿No tenés una cuenta?</span> 
+          <button type="button" id="btnToggleAuthMode" class="font-bold text-emerald-400 hover:text-emerald-300 underline ml-1 focus:outline-none">
+            Registrate acá
+          </button>
+        </p>
+      </div>
+
+      <!-- Instagram Footer inside Auth Section -->
+      <div class="mt-6 pt-3 border-t border-slate-700/40 text-center">
+        <a href="https://www.instagram.com/cristobaldominguez.dt?stkn=MXZkZWtycXl1anYwOA==" target="_blank" rel="noopener noreferrer" 
+           class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-pink-500/30 text-pink-400 text-xs hover:bg-pink-950/30 transition">
+          <i class="fa-brands fa-instagram text-sm"></i>
+          <span class="font-medium">@cristobaldominguez.dt</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <main id="dashboardSection" class="hidden flex-1 max-w-md w-full mx-auto p-3 space-y-4 overflow-y-auto custom-scrollbar pb-24">
+
+    <!-- Tab Navigation (6 Tabs) -->
+    <nav class="grid grid-cols-6 gap-1 bg-slate-800/90 p-1 rounded-2xl border border-slate-700/60 text-center text-xs shadow-md">
+      <button class="tab-btn active bg-emerald-600 text-white py-2 rounded-xl font-medium transition flex flex-col items-center gap-0.5" data-tab="tabClub">
+        <i class="fa-solid fa-shield-halved text-xs"></i>
+        <span class="text-[8px] leading-none">Club</span>
+      </button>
+      <button class="tab-btn bg-slate-800 text-slate-400 py-2 rounded-xl font-medium transition flex flex-col items-center gap-0.5" data-tab="tabPlayers">
+        <i class="fa-solid fa-users text-xs"></i>
+        <span class="text-[8px] leading-none">Jugadores</span>
+      </button>
+      <button class="tab-btn bg-slate-800 text-slate-400 py-2 rounded-xl font-medium transition flex flex-col items-center gap-0.5" data-tab="tabPhysical">
+        <i class="fa-solid fa-heart-pulse text-xs"></i>
+        <span class="text-[8px] leading-none">Físico</span>
+      </button>
+      <button class="tab-btn bg-slate-800 text-slate-400 py-2 rounded-xl font-medium transition flex flex-col items-center gap-0.5" data-tab="tabConduct">
+        <i class="fa-solid fa-gavel text-xs"></i>
+        <span class="text-[8px] leading-none">Conducta</span>
+      </button>
+      <button class="tab-btn bg-slate-800 text-slate-400 py-2 rounded-xl font-medium transition flex flex-col items-center gap-0.5" data-tab="tabAttendance">
+        <i class="fa-solid fa-calendar-plus text-xs"></i>
+        <span class="text-[8px] leading-none">Cargar Asis.</span>
+      </button>
+      <button class="tab-btn bg-slate-800 text-slate-400 py-2 rounded-xl font-medium transition flex flex-col items-center gap-0.5" data-tab="tabAttendanceGrid">
+        <i class="fa-solid fa-table-cells text-xs"></i>
+        <span class="text-[8px] leading-none">Lista Asis.</span>
+      </button>
+    </nav>
+
+    <div id="tabClub" class="tab-content space-y-4">
+      <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700/60 space-y-4 shadow-lg">
+        <div class="flex items-center space-x-2 text-emerald-400 border-b border-slate-700/60 pb-3">
+          <i class="fa-solid fa-building-columns text-lg"></i>
+          <h3 class="font-bold text-sm text-slate-100">1. Datos e Imagen del Club</h3>
+        </div>
+        <form id="formClub" class="space-y-3">
+          <!-- Club Crest / Logo Upload Preview -->
+          <div class="flex items-center space-x-3 bg-slate-900/60 p-3 rounded-xl border border-slate-700/50">
+            <div class="relative w-16 h-16 rounded-2xl bg-slate-800 border-2 border-emerald-500/50 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-inner">
+              <img id="clubLogoPreview" src="" alt="Escudo" class="hidden w-full h-full object-cover">
+              <i id="clubLogoPlaceholderIcon" class="fa-solid fa-shield-halved text-slate-500 text-2xl"></i>
+            </div>
+            <div class="flex-1">
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Escudo / Insignia (Base64)</label>
+              <input type="file" id="clubLogoInput" accept="image/*" class="hidden">
+              <div class="flex gap-2">
+                <button type="button" onclick="document.getElementById('clubLogoInput').click()" 
+                  class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 rounded-lg text-xs font-medium transition flex items-center gap-1">
+                  <i class="fa-solid fa-upload"></i> Subir Escudo
+                </button>
+                <button type="button" id="btnRemoveClubLogo" class="hidden px-2 py-1.5 bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg text-xs transition">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Nombre del Equipo / Club *</label>
+            <input type="text" id="clubName" required placeholder="Ej. Club Atlético San Martín" 
+              class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Categoría / División *</label>
+            <input type="text" id="clubCategory" required placeholder="Ej. Sub-15 / 2009" 
+              class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+          <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-floppy-disk"></i> Guardar Datos Institucionales
+          </button>
+        </form>
+      </div>
+
+      <!-- Current Institution Summary Card -->
+      <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-12 h-12 rounded-xl bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <img id="infoClubLogo" src="" class="hidden w-full h-full object-cover">
+            <i id="infoClubPlaceholder" class="fa-solid fa-shield text-emerald-400 text-xl"></i>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Club Registrado</span>
+            <h4 id="infoClubName" class="font-bold text-slate-100 text-base">No registrado</h4>
+            <span id="infoClubCategory" class="text-xs text-slate-400 font-mono">Categoría: N/A</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tabPlayers" class="tab-content hidden space-y-4">
+      
+      <!-- Player Search Bar -->
+      <div class="relative">
+        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+          <i class="fa-solid fa-magnifying-glass text-xs"></i>
+        </span>
+        <input type="text" id="playerSearchInput" placeholder="Buscar por nombre, posición o categoría..." 
+          class="w-full pl-9 pr-8 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+        <button id="btnClearSearch" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200">
+          <i class="fa-solid fa-circle-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <!-- Add/Edit Player Form -->
+      <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700/60 space-y-3 shadow-lg">
+        <div class="flex items-center justify-between border-b border-slate-700/60 pb-2">
+          <div class="flex items-center space-x-2 text-emerald-400">
+            <i class="fa-solid fa-user-plus text-lg"></i>
+            <h3 id="playerFormTitle" class="font-bold text-sm text-slate-100">Cargar Jugador</h3>
+          </div>
+          <button type="button" id="btnCancelEditPlayer" class="hidden text-xs text-red-400 hover:text-red-300 flex items-center gap-1 font-semibold">
+            <i class="fa-solid fa-xmark"></i> Cancelar
+          </button>
+        </div>
+        
+        <form id="formPlayer" class="space-y-3">
+          <input type="hidden" id="playerId">
+          
+          <!-- Photo Upload Preview -->
+          <div class="flex items-center space-x-3 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50">
+            <div class="relative w-14 h-14 rounded-full bg-slate-800 border-2 border-emerald-500/50 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-inner">
+              <img id="photoPreview" src="" alt="Foto" class="hidden w-full h-full object-cover">
+              <i id="photoPlaceholderIcon" class="fa-solid fa-user text-slate-500 text-xl"></i>
+            </div>
+            <div class="flex-1">
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Foto de Perfil (Base64)</label>
+              <input type="file" id="playerPhotoInput" accept="image/*" class="hidden">
+              <div class="flex gap-2">
+                <button type="button" onclick="document.getElementById('playerPhotoInput').click()" 
+                  class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 rounded-lg text-xs font-medium transition flex items-center gap-1">
+                  <i class="fa-solid fa-camera"></i> Subir Imagen
+                </button>
+                <button type="button" id="btnRemovePhoto" class="hidden px-2 py-1.5 bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg text-xs transition">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Nombre y Apellido *</label>
+            <input type="text" id="playerName" required placeholder="Ej. Mateo Gómez" 
+              class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Fecha de Nacimiento *</label>
+            <input type="date" id="playerDob" required 
+              class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Posición *</label>
+              <select id="playerPosition" required class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                <option value="Arquero">🧤 Arquero</option>
+                <option value="Defensor Central">🛡️ Defensor Central</option>
+                <option value="Lateral Derecho">⚡ Lateral Derecho</option>
+                <option value="Lateral Izquierdo">⚡ Lateral Izquierdo</option>
+                <option value="Mediocampista Defensivo">🎯 Mediocampista Defensivo</option>
+                <option value="Mediocampista Ofensivo">🪄 Mediocampista Ofensivo</option>
+                <option value="Extremo">🏃 Extremo</option>
+                <option value="Delantero Centro">⚽ Delantero Centro</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Pie Hábil *</label>
+              <select id="playerFoot" required class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                <option value="Derecho">🦶 Derecho</option>
+                <option value="Zurdo">🦶 Zurdo</option>
+                <option value="Ambidiestro">🦶 Ambidiestro</option>
+              </select>
+            </div>
+          </div>
+          
+          <button type="submit" id="btnSavePlayer" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-plus-circle"></i> Guardar Jugador
+          </button>
+        </form>
+      </div>
+
+      <!-- Vertical Player Stack List -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between px-1">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Lista Completa de Plantilla</h4>
+          <span id="playerCountBadge" class="text-[10px] bg-slate-800 text-emerald-400 border border-slate-700 px-2 py-0.5 rounded-full font-mono">0 jugadores</span>
+        </div>
+        <div id="playersList" class="space-y-3">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+    </div>
+
+    <div id="tabPhysical" class="tab-content hidden space-y-4">
+      <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700/60 space-y-3 shadow-lg">
+        <div class="flex items-center space-x-2 text-emerald-400 border-b border-slate-700/60 pb-2">
+          <i class="fa-solid fa-dumbbell text-lg"></i>
+          <h3 class="font-bold text-sm text-slate-100">3. Control Físico Semanal</h3>
+        </div>
+        <form id="formPhysical" class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Seleccionar Jugador *</label>
+            <select id="physPlayerId" required class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></select>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Flexiones de Brazos</label>
+              <input type="number" id="physPushups" placeholder="Cantidad (ej. 25)" min="0"
+                class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Abdominales</label>
+              <input type="number" id="physSitups" placeholder="Cantidad (ej. 40)" min="0"
+                class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Velocidad / Agilidad</label>
+              <input type="text" id="physSpeed" placeholder="Ej. 4.2 seg (30m)" 
+                class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Resistencia Aeróbica</label>
+              <input type="text" id="physEndurance" placeholder="Ej. Test Yo-Yo Nivel 15" 
+                class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Diagnóstico General *</label>
+            <select id="physStatus" required class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+              <option value="Excelente">🟢 Excelente</option>
+              <option value="Bueno">🔵 Bueno</option>
+              <option value="Regular">🟡 Regular</option>
+              <option value="Lesionado">🔴 Lesionado / En Rehabilitación</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Notas Técnicas / Molestias</label>
+            <textarea id="physNotes" rows="2" placeholder="Cargas de entrenamiento, observaciones físicas o técnica..." 
+              class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"></textarea>
+          </div>
+          <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-heart-circle-plus"></i> Registrar Evaluación Físico-Técnica
+          </button>
+        </form>
+      </div>
+
+      <div class="space-y-2">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Historial Físico Registrado</h4>
+        <div id="physicalLogsList" class="space-y-2">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+    </div>
+
+    <div id="tabConduct" class="tab-content hidden space-y-4">
+      <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700/60 space-y-3 shadow-lg">
+        <div class="flex items-center space-x-2 text-emerald-400 border-b border-slate-700/60 pb-2">
+          <i class="fa-solid fa-scale-balanced text-lg"></i>
+          <h3 class="font-bold text-sm text-slate-100">4. Conducta de Padres y Sanciones</h3>
+        </div>
+        <form id="formConduct" class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Tipo de Conducta *</label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="cursor-pointer bg-slate-900 p-2.5 rounded-xl border border-slate-700 flex items-center gap-2 text-xs font-medium text-slate-200 hover:border-emerald-500">
+                <input type="radio" name="conductType" value="positive" checked class="accent-emerald-500" onchange="toggleConductFields()">
+                <span>👏 COMPORTAMIENTO POSITIVO</span>
+              </label>
+              <label class="cursor-pointer bg-slate-900 p-2.5 rounded-xl border border-slate-700 flex items-center gap-2 text-xs font-medium text-slate-200 hover:border-red-500">
+                <input type="radio" name="conductType" value="negative" class="accent-red-500" onchange="toggleConductFields()">
+                <span>⚠️ CONDUCTA NEGATIVA</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Seleccionar Jugador *</label>
+            <select id="condPlayerId" required class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Nombre del Tutor / Padre / Madre *</label>
+            <input type="text" id="condParent" required placeholder="Ej. Roberto Gómez" 
+              class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Detalle / Notas del Incidente o Reconocimiento *</label>
+            <textarea id="condIncident" required rows="2" placeholder="Describa el comportamiento positivo observado o la falta disciplinaria..." 
+              class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"></textarea>
+          </div>
+
+          <!-- Fields specific to negative conduct -->
+          <div id="sanctionFieldsContainer" class="hidden space-y-3">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Sanción Tipificada *</label>
+                <select id="condSanction" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                  <option value="Advertencia verbal">⚠️ Advertencia verbal</option>
+                  <option value="Apercibimiento por escrito">📜 Apercibimiento escrito</option>
+                  <option value="Prohibición de ingreso a tribuna">🚫 Prohibición de ingreso</option>
+                  <option value="Suspensión temporal del jugador">⛔ Suspensión temporal</option>
+                  <option value="Expulsión / Baja del padrón">❌ Expulsión del padrón</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Estado de Sanción *</label>
+                <select id="condStatus" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                  <option value="Activa">🔴 Activa</option>
+                  <option value="En Revisión">🟡 En Revisión</option>
+                  <option value="Finalizada / Levantada">🟢 Finalizada</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-floppy-disk"></i> Guardar Registro Disciplinario / Conducta
+          </button>
+        </form>
+      </div>
+
+      <div class="space-y-2">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Historial Disciplinario y Conducta</h4>
+        <div id="sanctionsList" class="space-y-2">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+    </div>
+
+    <div id="tabAttendance" class="tab-content hidden space-y-4">
+      
+      <!-- Option Toggle: Individual vs Mass Attendance Entry -->
+      <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700/60 space-y-3 shadow-lg">
+        <div class="flex items-center justify-between border-b border-slate-700/60 pb-2">
+          <div class="flex items-center space-x-2 text-emerald-400">
+            <i class="fa-solid fa-calendar-plus text-lg"></i>
+            <h3 class="font-bold text-sm text-slate-100">5. Toma de Asistencia</h3>
+          </div>
+          <div class="flex bg-slate-900 p-1 rounded-xl text-[10px] font-bold border border-slate-700">
+            <button id="btnModeIndividual" onclick="setAttendanceEntryMode('individual')" class="px-2 py-1 rounded-lg bg-emerald-600 text-white transition">Individual</button>
+            <button id="btnModeMass" onclick="setAttendanceEntryMode('mass')" class="px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition">Masivo</button>
+          </div>
+        </div>
+
+        <!-- Mode A: Individual Registration Form -->
+        <form id="formAttendance" class="space-y-3">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Fecha *</label>
+              <input type="date" id="attDate" required 
+                class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Actividad *</label>
+              <select id="attActivity" required class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                <option value="Entrenamiento">⚽ Entrenamiento</option>
+                <option value="Partido Oficial">🏆 Partido Oficial</option>
+                <option value="Partido Amistoso">🤝 Partido Amistoso</option>
+                <option value="Gimnasio">🏋️ Gimnasio</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="individualPlayerSelectContainer">
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Seleccionar Jugador *</label>
+            <select id="attPlayerId" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></select>
+          </div>
+
+          <div id="individualStatusSelectContainer">
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Estado *</label>
+            <select id="attStatus" class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+              <option value="Presente">🟢 Presente</option>
+              <option value="Ausente">🔴 Ausente</option>
+              <option value="Ausente Justificado">🔵 Justificado</option>
+              <option value="Llegada Tarde">🟠 Llegada Tarde</option>
+            </select>
+          </div>
+
+          <div id="individualReasonContainer">
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Motivo / Observación</label>
+            <input type="text" id="attReason" placeholder="Ej. Motivos de salud / Examen escolar" 
+              class="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <!-- Mode B: Mass Registration Checklist Container -->
+          <div id="massAttendanceContainer" class="hidden space-y-2 pt-2 border-t border-slate-700/60">
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Carga Rápida de Plantilla Completa:</label>
+            <div id="massPlayersList" class="space-y-2 max-h-60 overflow-y-auto custom-scrollbar p-1">
+              <!-- Injected dynamically -->
+            </div>
+          </div>
+
+          <button type="submit" id="btnSubmitAttendance" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-check-double"></i> <span>Registrar Asistencia</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="space-y-2">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Últimas Asistencias Cargadas</h4>
+        <div id="attendanceLogsList" class="space-y-2">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+    </div>
+
+    <div id="tabAttendanceGrid" class="tab-content hidden space-y-4">
+      <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700/60 space-y-3 shadow-lg">
+        <div class="flex items-center justify-between border-b border-slate-700/60 pb-2">
+          <div class="flex items-center space-x-2 text-emerald-400">
+            <i class="fa-solid fa-table-cells text-lg"></i>
+            <h3 class="font-bold text-sm text-slate-100">Lista General de Asistencia</h3>
+          </div>
+          <span class="text-[10px] bg-slate-900 px-2 py-0.5 rounded-full text-slate-300 border border-slate-700 font-mono">Matriz Visual</span>
+        </div>
+
+        <p class="text-xs text-slate-400">Vista consolidada de asistencia por jugador con medidor porcentual, días totales y matriz cromática de historial por fecha.</p>
+
+        <!-- Filter Controls -->
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Filtrar Actividad</label>
+            <select id="gridFilterActivity" onchange="renderAttendanceGrid()" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none">
+              <option value="ALL">Todas las actividades</option>
+              <option value="Entrenamiento">⚽ Entrenamiento</option>
+              <option value="Partido Oficial">🏆 Partido Oficial</option>
+              <option value="Partido Amistoso">🤝 Partido Amistoso</option>
+              <option value="Gimnasio">🏋️ Gimnasio</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Ordenar Jugadores</label>
+            <select id="gridSortOrder" onchange="renderAttendanceGrid()" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none">
+              <option value="NAME">Por Nombre (A-Z)</option>
+              <option value="PERCENT_DESC">Mayor % Asistencia</option>
+              <option value="PERCENT_ASC">Menor % Asistencia</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Color Legend -->
+        <div class="flex flex-wrap items-center justify-between gap-1.5 bg-slate-900/60 p-2 rounded-xl text-[10px] border border-slate-700/50">
+          <span class="flex items-center gap-1 font-medium text-emerald-400"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Presente 🟢</span>
+          <span class="flex items-center gap-1 font-medium text-red-400"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span> Ausente 🔴</span>
+          <span class="flex items-center gap-1 font-medium text-amber-400"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Tarde 🟠</span>
+          <span class="flex items-center gap-1 font-medium text-blue-400"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Justificado 🔵</span>
+        </div>
+      </div>
+
+      <!-- Main Player-by-Player Matrix Stack -->
+      <div id="generalAttendanceGridContainer" class="space-y-3">
+        <!-- Injected via JS -->
+      </div>
+    </div>
+
+    <!-- Permanent Footer with Updated Direct Instagram Link -->
+    <footer class="pt-6 pb-2 text-center border-t border-slate-800">
+      <a href="https://www.instagram.com/cristobaldominguez.dt?stkn=MXZkZWtycXl1anYwOA==" target="_blank" rel="noopener noreferrer" 
+         class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800 border border-pink-500/40 text-pink-400 hover:text-pink-300 text-xs font-medium shadow-md hover:bg-slate-700/80 transition">
+        <i class="fa-brands fa-instagram text-base"></i>
+        <span>Desarrollado para <b>@cristobaldominguez.dt</b></span>
+      </a>
+    </footer>
+
+  </main>
+
+  <script>
+    // Storage Keys
+    const STORAGE_USERS = 'gestion_dt_users_db_v5';
+    const STORAGE_SESSION = 'gestion_dt_active_session_v5';
+    const STORAGE_CLUB = 'gestion_dt_club_info_v5';
+    const STORAGE_PLAYERS = 'gestion_dt_players_v5';
+    const STORAGE_PHYSICAL = 'gestion_dt_physical_v5';
+    const STORAGE_CONDUCT = 'gestion_dt_conduct_v5';
+    const STORAGE_ATTENDANCE = 'gestion_dt_attendance_v5';
+
+    // State Variables
+    let isRegisterMode = false;
+    let currentUser = null;
+    let clubInfo = { name: '', category: '', logo: '' };
+    let players = [];
+    let physicalLogs = [];
+    let conductLogs = [];
+    let attendanceLogs = [];
+    let currentPhotoBase64 = '';
+    let currentClubLogoBase64 = '';
+    let searchQuery = '';
+    let attendanceEntryMode = 'individual'; // 'individual' or 'mass'
+
+    // DOM Elements
+    const authSection = document.getElementById('authSection');
+    const dashboardSection = document.getElementById('dashboardSection');
+    const appHeader = document.getElementById('appHeader');
+    const authForm = document.getElementById('authForm');
+    const authTitle = document.getElementById('authTitle');
+    const authSubtitle = document.getElementById('authSubtitle');
+    const btnAuthSubmit = document.getElementById('btnAuthSubmit');
+    const btnToggleAuthMode = document.getElementById('btnToggleAuthMode');
+    const toggleText = document.getElementById('toggleText');
+    const authAlert = document.getElementById('authAlert');
+    const toggleAuthPass = document.getElementById('toggleAuthPass');
+    const authPassword = document.getElementById('authPassword');
+    const eyeIcon = document.getElementById('eyeIcon');
+    const navUserBadge = document.getElementById('currentUserName');
+    const btnLogout = document.getElementById('btnLogout');
+    const btnRefreshData = document.getElementById('btnRefreshData');
+    const refreshIcon = document.getElementById('refreshIcon');
+
+    // Storage Helpers
+    function getItem(key, fallback) {
+      try {
+        const val = localStorage.getItem(key);
+        return val ? JSON.parse(val) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function setItem(key, val) {
+      try {
+        localStorage.setItem(key, JSON.stringify(val));
+      } catch (e) {
+        if (e.name === 'QuotaExceededError') {
+          alert('Almacenamiento lleno. Reduzca la calidad o tamaño de las imágenes cargadas.');
+        }
+      }
+    }
+
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>'"]/g, tag => 
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+
+    function calculateAge(dobString) {
+      if (!dobString) return 'N/A';
+      const dob = new Date(dobString + 'T00:00:00');
+      const diffMs = Date.now() - dob.getTime();
+      const ageDate = new Date(diffMs);
+      const age = Math.abs(ageDate.getUTCFullYear() - 1970);
+      return isNaN(age) ? 'N/A' : `${age} años`;
+    }
+
+    function showAuthAlert(message, type = 'error') {
+      authAlert.classList.remove('hidden', 'bg-red-500/20', 'text-red-300', 'bg-emerald-500/20', 'text-emerald-300', 'border-red-500/30', 'border-emerald-500/30', 'border');
+      if (type === 'error') {
+        authAlert.classList.add('bg-red-500/20', 'text-red-300', 'border', 'border-red-500/30');
+        authAlert.innerHTML = `<i class="fa-solid fa-circle-exclamation text-sm"></i> <span>${message}</span>`;
+      } else {
+        authAlert.classList.add('bg-emerald-500/20', 'text-emerald-300', 'border', 'border-emerald-500/30');
+        authAlert.innerHTML = `<i class="fa-solid fa-circle-check text-sm"></i> <span>${message}</span>`;
+      }
+    }
+
+    toggleAuthPass.addEventListener('click', () => {
+      const type = authPassword.getAttribute('type') === 'password' ? 'text' : 'password';
+      authPassword.setAttribute('type', type);
+      eyeIcon.classList.toggle('fa-eye');
+      eyeIcon.classList.toggle('fa-eye-slash');
+    });
+
+    btnToggleAuthMode.addEventListener('click', () => {
+      isRegisterMode = !isRegisterMode;
+      authAlert.classList.add('hidden');
+      authForm.reset();
+
+      if (isRegisterMode) {
+        authTitle.textContent = 'Crear Cuenta';
+        authSubtitle.textContent = 'Registrate para administrar tu equipo';
+        btnAuthSubmit.querySelector('span').textContent = 'Registrarse';
+        toggleText.textContent = '¿Ya tenés una cuenta?';
+        btnToggleAuthMode.textContent = 'Iniciá sesión acá';
+      } else {
+        authTitle.textContent = 'Iniciar Sesión';
+        authSubtitle.textContent = 'Ingresá tus credenciales para administrar el equipo';
+        btnAuthSubmit.querySelector('span').textContent = 'Ingresar';
+        toggleText.textContent = '¿No tenés una cuenta?';
+        btnToggleAuthMode.textContent = 'Registrate acá';
+      }
+    });
+
+    authForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const userVal = document.getElementById('authUsername').value.trim();
+      const passVal = authPassword.value.trim();
+
+      if (!userVal || !passVal) {
+        showAuthAlert('Por favor completá todos los campos.');
+        return;
+      }
+
+      const users = getItem(STORAGE_USERS, {});
+
+      if (isRegisterMode) {
+        if (users[userVal]) {
+          showAuthAlert('El nombre de usuario ya existe. Elegí otro.');
+          return;
+        }
+        users[userVal] = passVal;
+        setItem(STORAGE_USERS, users);
+        showAuthAlert('¡Cuenta creada con éxito! Iniciando sesión...', 'success');
+        setTimeout(() => {
+          localStorage.setItem(STORAGE_SESSION, userVal);
+          initUserSession(userVal);
+        }, 800);
+      } else {
+        if (users[userVal] && users[userVal] === passVal) {
+          localStorage.setItem(STORAGE_SESSION, userVal);
+          initUserSession(userVal);
+        } else {
+          showAuthAlert('Usuario o contraseña incorrectos.');
+        }
+      }
+    });
+
+    btnLogout.addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_SESSION);
+      currentUser = null;
+      appHeader.classList.add('hidden');
+      dashboardSection.classList.add('hidden');
+      authSection.classList.remove('hidden');
+      authForm.reset();
+      authAlert.classList.add('hidden');
+    });
+
+    // Refresh & Instant Sync Button Action
+    btnRefreshData.addEventListener('click', () => {
+      refreshIcon.classList.add('spin-animation');
+      loadAppData();
+      setTimeout(() => {
+        refreshIcon.classList.remove('spin-animation');
+      }, 600);
+    });
+
+    function initUserSession(username) {
+      currentUser = username;
+      navUserBadge.textContent = username;
+      authSection.classList.add('hidden');
+      appHeader.classList.remove('hidden');
+      dashboardSection.classList.remove('hidden');
+      
+      document.getElementById('attDate').valueAsDate = new Date();
+      loadAppData();
+    }
+
+    function loadAppData() {
+      clubInfo = getItem(STORAGE_CLUB, { name: '', category: '', logo: '' });
+      players = getItem(STORAGE_PLAYERS, []);
+      physicalLogs = getItem(STORAGE_PHYSICAL, []);
+      conductLogs = getItem(STORAGE_CONDUCT, []);
+      attendanceLogs = getItem(STORAGE_ATTENDANCE, []);
+
+      // Trigger multi-view reactive sync
+      renderClubInfo();
+      renderPlayers();
+      populatePlayerDropdowns();
+      renderPhysicalLogs();
+      renderConductLogs();
+      renderAttendanceLogs();
+      renderAttendanceGrid();
+      renderMassAttendanceForm();
+    }
+
+    function switchToTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('active', 'bg-emerald-600', 'text-white');
+        b.classList.add('bg-slate-800', 'text-slate-400');
+        if (b.dataset.tab === tabId) {
+          b.classList.add('active', 'bg-emerald-600', 'text-white');
+          b.classList.remove('bg-slate-800', 'text-slate-400');
+        }
+      });
+      document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
+      const target = document.getElementById(tabId);
+      if (target) target.classList.remove('hidden');
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        switchToTab(btn.dataset.tab);
+      });
+    });
+
+    // Club Logo Image Upload Handler
+    const clubLogoInput = document.getElementById('clubLogoInput');
+    const clubLogoPreview = document.getElementById('clubLogoPreview');
+    const clubLogoPlaceholderIcon = document.getElementById('clubLogoPlaceholderIcon');
+    const btnRemoveClubLogo = document.getElementById('btnRemoveClubLogo');
+
+    clubLogoInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          compressAndSetImage(evt.target.result, 250, (compressedBase64) => {
+            currentClubLogoBase64 = compressedBase64;
+            setClubLogoPreview(compressedBase64);
+          });
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    btnRemoveClubLogo.addEventListener('click', () => {
+      currentClubLogoBase64 = '';
+      clubLogoInput.value = '';
+      setClubLogoPreview('');
+    });
+
+    function setClubLogoPreview(src) {
+      if (src) {
+        clubLogoPreview.src = src;
+        clubLogoPreview.classList.remove('hidden');
+        clubLogoPlaceholderIcon.classList.add('hidden');
+        btnRemoveClubLogo.classList.remove('hidden');
+      } else {
+        clubLogoPreview.src = '';
+        clubLogoPreview.classList.add('hidden');
+        clubLogoPlaceholderIcon.classList.remove('hidden');
+        btnRemoveClubLogo.classList.add('hidden');
+      }
+    }
+
+    // Player Photo Upload Handler
+    const playerPhotoInput = document.getElementById('playerPhotoInput');
+    const photoPreview = document.getElementById('photoPreview');
+    const photoPlaceholderIcon = document.getElementById('photoPlaceholderIcon');
+    const btnRemovePhoto = document.getElementById('btnRemovePhoto');
+
+    playerPhotoInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          compressAndSetImage(evt.target.result, 250, (compressedBase64) => {
+            currentPhotoBase64 = compressedBase64;
+            setPhotoPreview(compressedBase64);
+          });
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    btnRemovePhoto.addEventListener('click', () => {
+      currentPhotoBase64 = '';
+      playerPhotoInput.value = '';
+      setPhotoPreview('');
+    });
+
+    function setPhotoPreview(src) {
+      if (src) {
+        photoPreview.src = src;
+        photoPreview.classList.remove('hidden');
+        photoPlaceholderIcon.classList.add('hidden');
+        btnRemovePhoto.classList.remove('hidden');
+      } else {
+        photoPreview.src = '';
+        photoPreview.classList.add('hidden');
+        photoPlaceholderIcon.classList.remove('hidden');
+        btnRemovePhoto.classList.add('hidden');
+      }
+    }
+
+    function compressAndSetImage(base64Str, maxDim, callback) {
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDim) {
+            height *= maxDim / width;
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width *= maxDim / height;
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        callback(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = base64Str;
+    }
+
+    // Search Filter Logic
+    const playerSearchInput = document.getElementById('playerSearchInput');
+    const btnClearSearch = document.getElementById('btnClearSearch');
+
+    playerSearchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value.toLowerCase().trim();
+      btnClearSearch.classList.toggle('hidden', searchQuery.length === 0);
+      renderPlayers();
+    });
+
+    btnClearSearch.addEventListener('click', () => {
+      playerSearchInput.value = '';
+      searchQuery = '';
+      btnClearSearch.classList.add('hidden');
+      renderPlayers();
+    });
+
+    document.getElementById('formClub').addEventListener('submit', (e) => {
+      e.preventDefault();
+      clubInfo = {
+        name: document.getElementById('clubName').value.trim(),
+        category: document.getElementById('clubCategory').value.trim(),
+        logo: currentClubLogoBase64
+      };
+      setItem(STORAGE_CLUB, clubInfo);
+      renderClubInfo();
+      renderPlayers();
+      renderAttendanceGrid();
+    });
+
+    function renderClubInfo() {
+      document.getElementById('clubName').value = clubInfo.name || '';
+      document.getElementById('clubCategory').value = clubInfo.category || '';
+      currentClubLogoBase64 = clubInfo.logo || '';
+      setClubLogoPreview(currentClubLogoBase64);
+
+      // Header display update
+      document.getElementById('clubDisplayTitle').textContent = clubInfo.name || 'GestionDT';
+      document.getElementById('clubDisplaySubtitle').textContent = clubInfo.name ? `${clubInfo.name} (${clubInfo.category || 'N/A'})` : 'Sin Club Definido';
+
+      const headerLogo = document.getElementById('headerClubLogo');
+      const headerPlaceholder = document.getElementById('headerClubPlaceholder');
+
+      if (clubInfo.logo) {
+        headerLogo.src = clubInfo.logo;
+        headerLogo.classList.remove('hidden');
+        headerPlaceholder.classList.add('hidden');
+      } else {
+        headerLogo.src = '';
+        headerLogo.classList.add('hidden');
+        headerPlaceholder.classList.remove('hidden');
+      }
+
+      // Summary Card display update
+      document.getElementById('infoClubName').textContent = clubInfo.name || 'No registrado';
+      document.getElementById('infoClubCategory').textContent = clubInfo.category ? `Categoría: ${clubInfo.category}` : 'Categoría: N/A';
+
+      const infoLogo = document.getElementById('infoClubLogo');
+      const infoPlaceholder = document.getElementById('infoClubPlaceholder');
+
+      if (clubInfo.logo) {
+        infoLogo.src = clubInfo.logo;
+        infoLogo.classList.remove('hidden');
+        infoPlaceholder.classList.add('hidden');
+      } else {
+        infoLogo.src = '';
+        infoLogo.classList.add('hidden');
+        infoPlaceholder.classList.remove('hidden');
+      }
+    }
+
+    const formPlayer = document.getElementById('formPlayer');
+    const playerFormTitle = document.getElementById('playerFormTitle');
+    const btnCancelEditPlayer = document.getElementById('btnCancelEditPlayer');
+
+    formPlayer.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const pId = document.getElementById('playerId').value;
+      const playerData = {
+        id: pId || 'p_' + Date.now(),
+        name: document.getElementById('playerName').value.trim(),
+        dob: document.getElementById('playerDob').value,
+        position: document.getElementById('playerPosition').value,
+        foot: document.getElementById('playerFoot').value,
+        photo: currentPhotoBase64
+      };
+
+      if (pId) {
+        players = players.map(p => p.id === pId ? playerData : p);
+      } else {
+        players.unshift(playerData);
+      }
+
+      setItem(STORAGE_PLAYERS, players);
+      resetPlayerForm();
+      
+      // Instant synchronization across all tabs
+      renderPlayers();
+      populatePlayerDropdowns();
+      renderAttendanceGrid();
+      renderMassAttendanceForm();
+    });
+
+    function resetPlayerForm() {
+      formPlayer.reset();
+      document.getElementById('playerId').value = '';
+      currentPhotoBase64 = '';
+      setPhotoPreview('');
+      playerFormTitle.textContent = 'Cargar Jugador';
+      document.getElementById('btnSavePlayer').querySelector('span').textContent = 'Guardar Jugador';
+      btnCancelEditPlayer.classList.add('hidden');
+    }
+
+    btnCancelEditPlayer.addEventListener('click', resetPlayerForm);
+
+    function renderPlayers() {
+      const container = document.getElementById('playersList');
+      const countBadge = document.getElementById('playerCountBadge');
+      container.innerHTML = '';
+
+      const filteredPlayers = players.filter(p => {
+        const nameMatch = p.name.toLowerCase().includes(searchQuery);
+        const posMatch = p.position.toLowerCase().includes(searchQuery);
+        const catMatch = (clubInfo.category || '').toLowerCase().includes(searchQuery);
+        return nameMatch || posMatch || catMatch;
+      });
+
+      countBadge.textContent = `${filteredPlayers.length} / ${players.length} jugadores`;
+
+      if (filteredPlayers.length === 0) {
+        container.innerHTML = `
+          <div class="bg-slate-800/60 p-6 rounded-2xl text-center text-xs text-slate-400 border border-slate-700/60 flex flex-col items-center gap-2">
+            <i class="fa-solid fa-users-slash text-2xl text-slate-500"></i>
+            <span>${searchQuery ? 'No se encontraron jugadores.' : 'No hay jugadores registrados.'}</span>
+          </div>`;
+        return;
+      }
+
+      filteredPlayers.forEach(p => {
+        const card = document.createElement('div');
+        card.className = "bg-slate-800 p-3.5 rounded-2xl border border-slate-700/60 shadow-md flex flex-col space-y-3 transition hover:border-slate-600";
+        
+        const photoSrc = p.photo || '';
+        const ageStr = calculateAge(p.dob);
+        const dobFormatted = p.dob ? new Date(p.dob + 'T00:00:00').toLocaleDateString('es-AR') : 'N/A';
+
+        card.innerHTML = `
+          <div class="flex items-start space-x-3">
+            <div class="w-12 h-12 rounded-full bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden flex-shrink-0 shadow">
+              ${photoSrc 
+                ? `<img src="${photoSrc}" class="w-full h-full object-cover">` 
+                : `<i class="fa-solid fa-user text-slate-500 text-lg"></i>`}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between">
+                <h5 class="font-bold text-slate-100 text-sm truncate">${escapeHTML(p.name)}</h5>
+                <div class="flex items-center space-x-1">
+                  <button onclick="editPlayer('${p.id}')" class="p-1.5 text-emerald-400 hover:bg-slate-700/60 rounded-lg transition" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button>
+                  <button onclick="deletePlayer('${p.id}')" class="p-1.5 text-red-400 hover:bg-slate-700/60 rounded-lg transition" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+              </div>
+              <p class="text-xs text-emerald-400 font-semibold">${escapeHTML(p.position)}</p>
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-400 mt-0.5">
+                <span>🎂 ${dobFormatted} (${ageStr})</span>
+                <span>•</span>
+                <span>🦶 Pie: ${escapeHTML(p.foot || 'Derecho')}</span>
+                <span>•</span>
+                <span class="text-emerald-300 font-mono">Cat: ${escapeHTML(clubInfo.category || 'N/A')}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-slate-700/50 grid grid-cols-3 gap-1.5 text-[10px]">
+            <button onclick="quickAction('physical', '${p.id}')" class="bg-slate-900/80 hover:bg-emerald-950 text-emerald-300 border border-emerald-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium">
+              <i class="fa-solid fa-dumbbell"></i> Físico
+            </button>
+            <button onclick="quickAction('conduct', '${p.id}')" class="bg-slate-900/80 hover:bg-amber-950 text-amber-300 border border-amber-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium">
+              <i class="fa-solid fa-gavel"></i> Conducta
+            </button>
+            <button onclick="quickAction('attendance', '${p.id}')" class="bg-slate-900/80 hover:bg-blue-950 text-blue-300 border border-blue-500/30 py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 font-medium">
+              <i class="fa-solid fa-calendar-check"></i> Asistencia
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    window.editPlayer = function(id) {
+      const p = players.find(x => x.id === id);
+      if (!p) return;
+      document.getElementById('playerId').value = p.id;
+      document.getElementById('playerName').value = p.name;
+      document.getElementById('playerDob').value = p.dob || '';
+      document.getElementById('playerPosition').value = p.position;
+      document.getElementById('playerFoot').value = p.foot || 'Derecho';
+      currentPhotoBase64 = p.photo || '';
+      setPhotoPreview(currentPhotoBase64);
+
+      playerFormTitle.textContent = 'Editar Jugador';
+      document.getElementById('btnSavePlayer').querySelector('span').textContent = 'Actualizar Jugador';
+      btnCancelEditPlayer.classList.remove('hidden');
+      document.getElementById('formPlayer').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    window.deletePlayer = function(id) {
+      if (confirm('¿Estás seguro de eliminar este jugador?')) {
+        players = players.filter(p => p.id !== id);
+        setItem(STORAGE_PLAYERS, players);
+        renderPlayers();
+        populatePlayerDropdowns();
+        renderAttendanceGrid();
+        renderMassAttendanceForm();
+      }
+    };
+
+    window.quickAction = function(module, playerId) {
+      if (module === 'physical') {
+        switchToTab('tabPhysical');
+        document.getElementById('physPlayerId').value = playerId;
+      } else if (module === 'conduct') {
+        switchToTab('tabConduct');
+        document.getElementById('condPlayerId').value = playerId;
+      } else if (module === 'attendance') {
+        switchToTab('tabAttendance');
+        setAttendanceEntryMode('individual');
+        document.getElementById('attPlayerId').value = playerId;
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    function populatePlayerDropdowns() {
+      const dropdowns = ['physPlayerId', 'condPlayerId', 'attPlayerId'];
+      dropdowns.forEach(ddId => {
+        const select = document.getElementById(ddId);
+        select.innerHTML = players.length === 0 ? '<option value="">Sin jugadores creados</option>' : '';
+        players.forEach(p => {
+          select.innerHTML += `<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.position)})</option>`;
+        });
+      });
+    }
+
+    document.getElementById('formPhysical').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const pid = document.getElementById('physPlayerId').value;
+      if (!pid) return;
+
+      const pObj = players.find(x => x.id === pid);
+      const log = {
+        id: 'phys_' + Date.now(),
+        playerId: pid,
+        playerName: pObj ? pObj.name : 'Desconocido',
+        date: new Date().toLocaleDateString('es-AR'),
+        pushups: document.getElementById('physPushups').value || 'N/R',
+        situps: document.getElementById('physSitups').value || 'N/R',
+        speed: document.getElementById('physSpeed').value.trim() || 'N/R',
+        endurance: document.getElementById('physEndurance').value.trim() || 'N/R',
+        status: document.getElementById('physStatus').value,
+        notes: document.getElementById('physNotes').value.trim()
+      };
+
+      physicalLogs.unshift(log);
+      setItem(STORAGE_PHYSICAL, physicalLogs);
+      document.getElementById('formPhysical').reset();
+      renderPhysicalLogs();
+    });
+
+    function renderPhysicalLogs() {
+      const container = document.getElementById('physicalLogsList');
+      container.innerHTML = '';
+
+      if (physicalLogs.length === 0) {
+        container.innerHTML = `<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin evaluaciones físicas registradas.</div>`;
+        return;
+      }
+
+      physicalLogs.forEach(log => {
+        const card = document.createElement('div');
+        card.className = "bg-slate-800 p-3 rounded-xl border border-slate-700/60 text-xs space-y-2 relative";
+        
+        let statusBadge = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+        if (log.status === 'Regular') statusBadge = "bg-amber-500/20 text-amber-300 border-amber-500/30";
+        if (log.status === 'Lesionado') statusBadge = "bg-red-500/20 text-red-300 border-red-500/30";
+
+        card.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)}</h5>
+              <span class="text-[10px] text-slate-400">${escapeHTML(log.date)}</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(log.status)}</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2 bg-slate-900/60 p-2 rounded-lg font-mono text-[11px] text-slate-300 border border-slate-700/40">
+            <div>💪 Flexiones: <b>${escapeHTML(log.pushups)}</b></div>
+            <div>🧘 Abdominales: <b>${escapeHTML(log.situps)}</b></div>
+            <div>⚡ Velocidad: <b>${escapeHTML(log.speed)}</b></div>
+            <div>🫁 Resistencia: <b>${escapeHTML(log.endurance)}</b></div>
+          </div>
+          ${log.notes ? `<p class="text-[11px] text-slate-400 italic bg-slate-900/30 p-2 rounded-lg border border-slate-700/30">${escapeHTML(log.notes)}</p>` : ''}
+          <button onclick="deletePhysicalLog('${log.id}')" class="absolute bottom-2 right-2 text-slate-500 hover:text-red-400 text-xs p-1"><i class="fa-solid fa-trash-can"></i></button>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    window.deletePhysicalLog = function(id) {
+      physicalLogs = physicalLogs.filter(l => l.id !== id);
+      setItem(STORAGE_PHYSICAL, physicalLogs);
+      renderPhysicalLogs();
+    };
+
+    window.toggleConductFields = function() {
+      const isNegative = document.querySelector('input[name="conductType"]:checked').value === 'negative';
+      document.getElementById('sanctionFieldsContainer').classList.toggle('hidden', !isNegative);
+    };
+
+    document.getElementById('formConduct').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const pid = document.getElementById('condPlayerId').value;
+      if (!pid) return;
+
+      const isNegative = document.querySelector('input[name="conductType"]:checked').value === 'negative';
+      const pObj = players.find(x => x.id === pid);
+
+      const log = {
+        id: 'cond_' + Date.now(),
+        playerId: pid,
+        playerName: pObj ? pObj.name : 'Desconocido',
+        type: isNegative ? 'negative' : 'positive',
+        parent: document.getElementById('condParent').value.trim(),
+        incident: document.getElementById('condIncident').value.trim(),
+        sanction: isNegative ? document.getElementById('condSanction').value : 'Felicitación / Reconocimiento',
+        status: isNegative ? document.getElementById('condStatus').value : 'Finalizada / Levantada',
+        date: new Date().toLocaleDateString('es-AR')
+      };
+
+      conductLogs.unshift(log);
+      setItem(STORAGE_CONDUCT, conductLogs);
+      
+      document.getElementById('formConduct').reset();
+      toggleConductFields();
+      renderConductLogs();
+    });
+
+    function renderConductLogs() {
+      const container = document.getElementById('sanctionsList');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (conductLogs.length === 0) {
+        container.innerHTML = `<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin registros de conducta ni sanciones.</div>`;
+        return;
+      }
+
+      conductLogs.forEach(log => {
+        const card = document.createElement('div');
+        const isPos = log.type === 'positive';
+        
+        card.className = `bg-slate-800 p-3 rounded-xl border text-xs space-y-2 relative shadow-sm transition ${isPos ? 'border-emerald-500/40 hover:border-emerald-400' : 'border-red-500/40 hover:border-red-400'}`;
+        
+        let statusBadge = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+        if (log.status === 'En Revisión') statusBadge = "bg-amber-500/20 text-amber-300 border-amber-500/30";
+        if (log.status === 'Activa') statusBadge = "bg-red-500/20 text-red-300 border-red-500/30";
+
+        card.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm">${isPos ? '👏' : '⚠️'}</span>
+                <h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)} <span class="text-slate-400 text-[11px] font-normal">(Tutor: ${escapeHTML(log.parent)})</span></h5>
+              </div>
+              <span class="text-[10px] text-slate-400">${escapeHTML(log.date)}</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(isPos ? 'Reconocimiento' : log.status)}</span>
+          </div>
+          <div class="bg-slate-900/60 p-2.5 rounded-lg text-slate-300 border border-slate-700/40 space-y-1">
+            <p><b>Detalle:</b> ${escapeHTML(log.incident)}</p>
+            <p class="${isPos ? 'text-emerald-400' : 'text-amber-400'}"><b>Medida:</b> ${escapeHTML(log.sanction)}</p>
+          </div>
+          <button onclick="deleteConductLog('${log.id}')" class="absolute bottom-2 right-2 text-slate-500 hover:text-red-400 text-xs p-1 transition" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    window.deleteConductLog = function(id) {
+      conductLogs = conductLogs.filter(l => l.id !== id);
+      setItem(STORAGE_CONDUCT, conductLogs);
+      renderConductLogs();
+    };
+
+    window.setAttendanceEntryMode = function(mode) {
+      attendanceEntryMode = mode;
+      const btnInd = document.getElementById('btnModeIndividual');
+      const btnMass = document.getElementById('btnModeMass');
+
+      const indPlayerContainer = document.getElementById('individualPlayerSelectContainer');
+      const indStatusContainer = document.getElementById('individualStatusSelectContainer');
+      const indReasonContainer = document.getElementById('individualReasonContainer');
+      const massContainer = document.getElementById('massAttendanceContainer');
+
+      if (mode === 'individual') {
+        btnInd.className = "px-2 py-1 rounded-lg bg-emerald-600 text-white transition";
+        btnMass.className = "px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition";
+        indPlayerContainer.classList.remove('hidden');
+        indStatusContainer.classList.remove('hidden');
+        indReasonContainer.classList.remove('hidden');
+        massContainer.classList.add('hidden');
+      } else {
+        btnMass.className = "px-2 py-1 rounded-lg bg-emerald-600 text-white transition";
+        btnInd.className = "px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition";
+        indPlayerContainer.classList.add('hidden');
+        indStatusContainer.classList.add('hidden');
+        indReasonContainer.classList.add('hidden');
+        massContainer.classList.remove('hidden');
+        renderMassAttendanceForm();
+      }
+    };
+
+    function renderMassAttendanceForm() {
+      const container = document.getElementById('massPlayersList');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (players.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400 italic">No hay jugadores en la plantilla para carga masiva.</p>`;
+        return;
+      }
+
+      players.forEach(p => {
+        const item = document.createElement('div');
+        item.className = "bg-slate-900/80 p-2 rounded-xl border border-slate-700/60 flex items-center justify-between text-xs";
+        item.innerHTML = `
+          <span class="font-bold text-slate-100 truncate max-w-[130px]">${escapeHTML(p.name)}</span>
+          <select data-mass-player-id="${p.id}" class="mass-status-select bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 text-[11px] focus:outline-none">
+            <option value="Presente">🟢 Presente</option>
+            <option value="Ausente">🔴 Ausente</option>
+            <option value="Ausente Justificado">🔵 Justificado</option>
+            <option value="Llegada Tarde">🟠 Tarde</option>
+          </select>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    document.getElementById('formAttendance').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const dateVal = document.getElementById('attDate').value;
+      const actVal = document.getElementById('attActivity').value;
+
+      if (!dateVal) return;
+
+      if (attendanceEntryMode === 'individual') {
+        const pid = document.getElementById('attPlayerId').value;
+        if (!pid) return;
+
+        const pObj = players.find(x => x.id === pid);
+        const log = {
+          id: 'att_' + Date.now(),
+          playerId: pid,
+          playerName: pObj ? pObj.name : 'Desconocido',
+          date: dateVal,
+          activity: actVal,
+          status: document.getElementById('attStatus').value,
+          reason: document.getElementById('attReason').value.trim()
+        };
+
+        attendanceLogs.unshift(log);
+        document.getElementById('attReason').value = '';
+      } else {
+        // Mass entry logic
+        const selects = document.querySelectorAll('.mass-status-select');
+        selects.forEach(sel => {
+          const pid = sel.dataset.massPlayerId;
+          const pObj = players.find(x => x.id === pid);
+          if (pObj) {
+            attendanceLogs.unshift({
+              id: 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+              playerId: pid,
+              playerName: pObj.name,
+              date: dateVal,
+              activity: actVal,
+              status: sel.value,
+              reason: 'Carga Masiva'
+            });
+          }
+        });
+      }
+
+      setItem(STORAGE_ATTENDANCE, attendanceLogs);
+      
+      // Instant synchronization across tabs
+      renderAttendanceLogs();
+      renderAttendanceGrid();
+    });
+
+    function renderAttendanceLogs() {
+      const container = document.getElementById('attendanceLogsList');
+      container.innerHTML = '';
+
+      if (attendanceLogs.length === 0) {
+        container.innerHTML = `<div class="bg-slate-800/60 p-4 rounded-xl text-center text-xs text-slate-400 border border-slate-700/60">Sin registros de asistencia.</div>`;
+        return;
+      }
+
+      // Display latest 15 attendance logs
+      attendanceLogs.slice(0, 15).forEach(log => {
+        const card = document.createElement('div');
+        card.className = "bg-slate-800 p-3 rounded-xl border border-slate-700/60 text-xs flex items-center justify-between";
+        
+        let statusBadge = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+        if (log.status === 'Ausente') statusBadge = "bg-red-500/20 text-red-300 border-red-500/30";
+        if (log.status === 'Ausente Justificado') statusBadge = "bg-blue-500/20 text-blue-300 border-blue-500/30";
+        if (log.status === 'Llegada Tarde') statusBadge = "bg-amber-500/20 text-amber-300 border-amber-500/30";
+
+        card.innerHTML = `
+          <div>
+            <h5 class="font-bold text-slate-100">${escapeHTML(log.playerName)}</h5>
+            <p class="text-emerald-400 text-[11px]">${escapeHTML(log.activity)} • <span class="text-slate-400 font-mono">${escapeHTML(log.date)}</span></p>
+            ${log.reason ? `<p class="text-[10px] text-slate-400 italic mt-0.5">${escapeHTML(log.reason)}</p>` : ''}
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}">${escapeHTML(log.status)}</span>
+            <button onclick="deleteAttendanceLog('${log.id}')" class="text-slate-500 hover:text-red-400 text-xs p-1"><i class="fa-solid fa-trash-can"></i></button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    window.deleteAttendanceLog = function(id) {
+      attendanceLogs = attendanceLogs.filter(l => l.id !== id);
+      setItem(STORAGE_ATTENDANCE, attendanceLogs);
+      renderAttendanceLogs();
+      renderAttendanceGrid();
+    };
+
+    function renderAttendanceGrid() {
+      const container = document.getElementById('generalAttendanceGridContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (players.length === 0) {
+        container.innerHTML = `
+          <div class="bg-slate-800/60 p-6 rounded-2xl text-center text-xs text-slate-400 border border-slate-700/60 flex flex-col items-center gap-2">
+            <i class="fa-solid fa-users text-2xl text-slate-500"></i>
+            <span>No hay jugadores registrados para mostrar en el resumen general.</span>
+          </div>`;
+        return;
+      }
+
+      const activityFilter = document.getElementById('gridFilterActivity') ? document.getElementById('gridFilterActivity').value : 'ALL';
+      const sortOrder = document.getElementById('gridSortOrder') ? document.getElementById('gridSortOrder').value : 'NAME';
+
+      // Filter logs by selected activity
+      let filteredLogs = [...attendanceLogs];
+      if (activityFilter !== 'ALL') {
+        filteredLogs = filteredLogs.filter(l => l.activity === activityFilter);
+      }
+
+      // Collect all recorded unique dates sorted chronologically
+      const uniqueDates = Array.from(new Set(filteredLogs.map(l => l.date))).sort((a, b) => new Date(b) - new Date(a));
+
+      // Calculate attendance statistics per player
+      const playerStats = players.map(p => {
+        const pLogs = filteredLogs.filter(l => l.playerId === p.id);
+        const total = pLogs.length;
+        const presentCount = pLogs.filter(l => l.status === 'Presente').length;
+        const lateCount = pLogs.filter(l => l.status === 'Llegada Tarde').length;
+        const absentCount = pLogs.filter(l => l.status === 'Ausente').length;
+        const justifiedCount = pLogs.filter(l => l.status === 'Ausente Justificado').length;
+
+        // Present or Late counted as positive attendance
+        const percent = total > 0 ? Math.round(((presentCount + lateCount) / total) * 100) : 0;
+
+        return {
+          player: p,
+          logs: pLogs,
+          total,
+          presentCount,
+          lateCount,
+          absentCount,
+          justifiedCount,
+          percent
+        };
+      });
+
+      // Sort player list according to selection
+      playerStats.sort((a, b) => {
+        if (sortOrder === 'PERCENT_DESC') return b.percent - a.percent;
+        if (sortOrder === 'PERCENT_ASC') return a.percent - b.percent;
+        return a.player.name.localeCompare(b.player.name);
+      });
+
+      // Render vertical matrix list: one player card stacked below another
+      playerStats.forEach(st => {
+        const p = st.player;
+        const card = document.createElement('div');
+        card.className = "bg-slate-800 p-3.5 rounded-2xl border border-slate-700/60 shadow-md space-y-3";
+
+        // Attendance meter color styling
+        let percentColor = "text-emerald-400 border-emerald-500/40 bg-emerald-500/10";
+        if (st.percent < 75) percentColor = "text-amber-400 border-amber-500/40 bg-amber-500/10";
+        if (st.percent < 50) percentColor = "text-red-400 border-red-500/40 bg-red-500/10";
+
+        card.innerHTML = `
+          <!-- Header: Player profile & Overall summary -->
+          <div class="flex items-center justify-between border-b border-slate-700/50 pb-2.5">
+            <div class="flex items-center space-x-2.5">
+              <div class="w-10 h-10 rounded-full bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden flex-shrink-0">
+                ${p.photo 
+                  ? `<img src="${p.photo}" class="w-full h-full object-cover">` 
+                  : `<i class="fa-solid fa-user text-slate-500 text-base"></i>`}
+              </div>
+              <div>
+                <h5 class="font-bold text-slate-100 text-sm leading-tight">${escapeHTML(p.name)}</h5>
+                <p class="text-[10px] text-emerald-400 font-semibold">${escapeHTML(p.position)}</p>
+              </div>
+            </div>
+
+            <!-- Attendance Badge Percentage & Count -->
+            <div class="text-right">
+              <div class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border ${percentColor} font-bold text-xs font-mono">
+                <i class="fa-solid fa-chart-pie text-[10px]"></i>
+                <span>${st.total > 0 ? st.percent + '%' : 'S/R'}</span>
+              </div>
+              <p class="text-[9px] text-slate-400 mt-0.5">${st.presentCount + st.lateCount} de ${st.total} días registrados</p>
+            </div>
+          </div>
+
+          <!-- Counter Breakdown Badges -->
+          <div class="grid grid-cols-4 gap-1.5 text-center text-[10px] font-mono">
+            <div class="bg-slate-900/80 p-1.5 rounded-xl border border-emerald-500/30 text-emerald-300">
+              <span class="block text-[8px] uppercase text-slate-400 font-sans">Presente 🟢</span>
+              <span class="font-bold text-xs">${st.presentCount}</span>
+            </div>
+            <div class="bg-slate-900/80 p-1.5 rounded-xl border border-amber-500/30 text-amber-300">
+              <span class="block text-[8px] uppercase text-slate-400 font-sans">Tarde 🟠</span>
+              <span class="font-bold text-xs">${st.lateCount}</span>
+            </div>
+            <div class="bg-slate-900/80 p-1.5 rounded-xl border border-blue-500/30 text-blue-300">
+              <span class="block text-[8px] uppercase text-slate-400 font-sans">Justif. 🔵</span>
+              <span class="font-bold text-xs">${st.justifiedCount}</span>
+            </div>
+            <div class="bg-slate-900/80 p-1.5 rounded-xl border border-red-500/30 text-red-300">
+              <span class="block text-[8px] uppercase text-slate-400 font-sans">Ausente 🔴</span>
+              <span class="font-bold text-xs">${st.absentCount}</span>
+            </div>
+          </div>
+
+          <!-- Color-coded Matrix Strip for dates -->
+          <div>
+            <span class="block text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5">Matriz del Historial de Fechas:</span>
+            ${uniqueDates.length === 0 
+              ? `<p class="text-[10px] text-slate-500 italic">Sin registros para el filtro seleccionado.</p>`
+              : `<div class="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">
+                  ${uniqueDates.map(d => {
+                    const entry = st.logs.find(l => l.date === d);
+                    let badgeBg = "bg-slate-700/60 border-slate-600 text-slate-400";
+                    let statusIcon = "•";
+
+                    if (entry) {
+                      if (entry.status === 'Presente') {
+                        badgeBg = "bg-emerald-600/30 border-emerald-500/50 text-emerald-300";
+                        statusIcon = "🟢";
+                      } else if (entry.status === 'Llegada Tarde') {
+                        badgeBg = "bg-amber-600/30 border-amber-500/50 text-amber-300";
+                        statusIcon = "🟠";
+                      } else if (entry.status === 'Ausente Justificado') {
+                        badgeBg = "bg-blue-600/30 border-blue-500/50 text-blue-300";
+                        statusIcon = "🔵";
+                      } else if (entry.status === 'Ausente') {
+                        badgeBg = "bg-red-600/30 border-red-500/50 text-red-300";
+                        statusIcon = "🔴";
+                      }
+                    }
+
+                    const dateShort = d.split('-').slice(1).join('/');
+
+                    return `
+                      <div class="flex-shrink-0 flex flex-col items-center px-2 py-1 rounded-lg border ${badgeBg} text-[10px] min-w-[42px] transition" title="${d}: ${entry ? entry.status : 'Sin registro'}">
+                        <span class="font-bold text-xs">${statusIcon}</span>
+                        <span class="text-[8px] font-mono">${dateShort}</span>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>`
+            }
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // Auto Session Recovery on Load
+    window.addEventListener('DOMContentLoaded', () => {
+      const activeSession = localStorage.getItem(STORAGE_SESSION);
+      if (activeSession) {
+        initUserSession(activeSession);
+      }
+    });
+  </script>
+</body>
+</html>
